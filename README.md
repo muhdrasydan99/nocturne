@@ -1,3 +1,5 @@
+<img src="nocturne_icon_exact.png" alt="nocturne studio" width="400">
+
 # nocturne
 
 **nocturne** is a songwriting app with a rhyme highlighter. It brings lyric writing, rhyme tools and beat playback together in one dark-themed desktop workspace.
