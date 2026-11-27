@@ -1491,7 +1491,82 @@ def _syl_badge(syls: int) -> str:
     return f" ·{syls}s" if syls >= 2 else ""
 
 
-def find_rhymes_for_word(word: str, limit: int = 250) -> dict:
+_CUSTOM_POOL_CACHE = {
+    "sig": None,
+    "by_part": {},
+    "by_vowel": {},
+    "fallback": [],
+}
+
+
+def _get_indexed_custom_candidates(target_parts: list[str], t_phones: tuple, is_bm: bool) -> list[tuple[str, dict]]:
+    """Build O(1) phonetic buckets for custom_slang + active_pack_words (supports 300k+ entries)."""
+    slang_keys = tuple(LEXICON.custom_slang.keys())
+    pack_words = LEXICON.active_pack_words
+    pack_len = len(pack_words)
+    # Fast lightweight signature to detect pack/slang updates without hashing 300k strings every call
+    sample = tuple(list(pack_words)[:5] + list(pack_words)[-5:]) if pack_len else ()
+    sig = (len(slang_keys), slang_keys[:10], pack_len, sample)
+
+    if _CUSTOM_POOL_CACHE["sig"] != sig:
+        by_part: dict[str, list[tuple[str, dict]]] = {}
+        by_vowel: dict[str, list[tuple[str, dict]]] = {}
+        fallback: list[tuple[str, dict]] = []
+
+        seen = set()
+        for raw_cand in list(slang_keys) + list(pack_words):
+            cand = raw_cand.strip()
+            if not cand or cand in seen:
+                continue
+            seen.add(cand)
+
+            # For multi-word lines/phrases, index by the final word's phonetics
+            tail_word = cand.split()[-1] if " " in cand else cand
+            c_prof = LEXICON.get_phonetic_profile(tail_word)
+            phones = c_prof.get("phones", ())
+            stripped = _strip_stress(phones)
+
+            rpart = _rhyming_part(phones) if phones else ""
+            if rpart:
+                by_part.setdefault(rpart, []).append((cand, c_prof))
+
+            v_pos = _vowel_positions(stripped) if stripped else []
+            if v_pos:
+                last_v = stripped[v_pos[-1]]
+                by_vowel.setdefault(last_v, []).append((cand, c_prof))
+            else:
+                fallback.append((cand, c_prof))
+
+        _CUSTOM_POOL_CACHE["sig"] = sig
+        _CUSTOM_POOL_CACHE["by_part"] = by_part
+        _CUSTOM_POOL_CACHE["by_vowel"] = by_vowel
+        _CUSTOM_POOL_CACHE["fallback"] = fallback
+
+    # Retrieve only relevant phonetic buckets instead of scanning all 300k+ entries
+    bucket: list[tuple[str, dict]] = []
+    seen_cands = set()
+
+    for part in target_parts:
+        for item in _CUSTOM_POOL_CACHE["by_part"].get(part, ()):
+            if item[0] not in seen_cands:
+                seen_cands.add(item[0])
+                bucket.append(item)
+
+    v_pos_t = _vowel_positions(t_phones) if t_phones else []
+    if v_pos_t:
+        last_v_t = t_phones[v_pos_t[-1]]
+        for item in _CUSTOM_POOL_CACHE["by_vowel"].get(last_v_t, ()):
+            if item[0] not in seen_cands:
+                seen_cands.add(item[0])
+                bucket.append(item)
+
+    if is_bm and not bucket:
+        bucket.extend(_CUSTOM_POOL_CACHE["fallback"][:500])
+
+    return bucket
+
+
+def find_rhymes_for_word(word: str, limit: int = 150) -> dict:
     clean = re.sub(r"^[^A-Za-z0-9'-]+|[^A-Za-z0-9'-]+$", "", word).strip()
     if not clean:
         return {
@@ -1567,10 +1642,8 @@ def find_rhymes_for_word(word: str, limit: int = 250) -> dict:
                 bm_matches.append((tier, _closeness(c_prof), cand, c_prof))
 
     custom_matches = []
-    custom_pool = set(LEXICON.custom_slang.keys()) | set(LEXICON.active_pack_words)
-    for cand in sorted(custom_pool):
+    for cand, c_prof in _get_indexed_custom_candidates(target_parts, t_phones, is_bm):
         if cand != norm:
-            c_prof = LEXICON.get_phonetic_profile(cand)
             tier = _match_tier(c_prof)
             if tier:
                 custom_matches.append((tier, _closeness(c_prof), cand, c_prof))
