@@ -82,16 +82,6 @@ python main.py
 
 [FFmpeg](https://ffmpeg.org/) is recommended. It is used as a fallback when beat audio cannot be read directly.
 
-## Building the installer
-
-You need [Inno Setup](https://jrsoftware.org/isinfo.php), along with `build.bat`, `make_icon.py` and `installer.iss` in the project folder.
-
-1. Run `build.bat`. It creates a virtual environment, installs the packages and builds the app into `dist\Nocturne\`.
-2. Test `dist\Nocturne\Nocturne.exe`.
-3. Open `installer.iss` in Inno Setup and compile it.
-
-The installer is saved as `output\Nocturne_Setup_1.0.exe`.
-
 ## Your data
 
 Profiles are stored in the `profiles` folder inside the app directory.
