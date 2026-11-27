@@ -1,15 +1,17 @@
 [Setup]
 AppId={{8F3C2A71-5B9E-4D26-A1C4-7E0B9D3F6A52}
-AppName=Nocturne
-AppVersion=1.1.0
+AppName=nocturne
+AppVersion=1.1.0-beta
+AppVerName=nocturne
 AppPublisher=Adan
+AppPublisherURL=https://github.com/muhdrasydan99/nocturne/
 ; Pasang per-user supaya program boleh tulis folder profiles
 PrivilegesRequired=lowest
 DefaultDirName={localappdata}\Programs\Nocturne
 DefaultGroupName=Nocturne
 DisableProgramGroupPage=yes
 OutputDir=output
-OutputBaseFilename=Nocturne_Setup_v1.1.0beta
+OutputBaseFilename=nocturne_setup_v1.1.0beta
 SetupIconFile=nocturne.ico
 UninstallDisplayIcon={app}\Nocturne.exe
 Compression=lzma2
