@@ -6,6 +6,10 @@
 
 > **Status:** v1.0 Testing
 
+
+<img width="1482" height="942" alt="{398839CD-62E4-478E-B1D8-F198D2BF9B9F}" src="https://github.com/user-attachments/assets/de63aa7d-2544-4b5c-8bbf-77d61b7970ee" />
+
+
 ## Features
 
 ### Lyric editor
