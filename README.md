@@ -4,15 +4,29 @@
 
 **nocturne** is a songwriting app with a rhyme highlighter. It brings lyric writing, rhyme tools and beat playback together in one themed desktop workspace.
 
-> **Status:** v1.1.0-beta
+> **Status:** v1.1.1
 
 <img width="1482" height="942" alt="{398839CD-62E4-478E-B1D8-F198D2BF9B9F}" src="https://github.com/user-attachments/assets/de63aa7d-2544-4b5c-8bbf-77d61b7970ee" />
 
-## What's New in v1.1.0-beta
+## What's New in v1.1.1
+### UI & Layout
 
-* **Rhyme Checker:** Instant 2-word phonetic comparator under the Rhyme Engine with percentage match scores, tail breakdown, and quick swap (`⇄`) for English, Bahasa Melayu, and Manglish.
-* **Lyrics Analyzer:** Dedicated dialog accessible from the sidebar offering honest craft critiques, cliché and abstract-word detection, cadence jump checks, writer's block exercises, and song-finishing plans.
-* **Custom Studio Themes:** Live theme switcher powered by JSON palettes with high-contrast foreground text support (including Monochrome Noir).
+* **Full-screen layout:** Raised the floating auto-scroll panel slightly with a bottom black gradient fade so it no longer clips against the taskbar.
+* **Song structure background (`[` / `@`):** Fixed the background turning transparent when typing structure tags; it now matches the active theme's background color.
+* **Rhyme color bar:** Added a **Clean Up Lyrics** tool next to the rhyme color bar to format messy lyrics (capitalizing line starts, removing stray commas/periods, and adding missing structure tags).
+
+### Vault & Song Management
+
+* **Renaming songs:** Fixed top-bar renaming so it renames the existing lyric file in the Vault instead of creating a duplicate file. New files are now only created when clicking **New**.
+* **Full Vault context menu:** Added a right-click menu with actions matching the app's features.
+
+### Rhyme Engine, Checker & Pen Meter
+
+* **Live mode in Rhyme Checker:** Synced Rhyme Checker with Live Mode so it automatically checks selected bars and upcoming bars as you work.
+* **Broader & near-rhyme detection:** Improved rhyme detection for missed words (such as matching Malay words like *"palat"* with *"bulat"*, *"kilat"*, and *"kiblat"*) and added near-rhyme matching.
+* **Slant rhymes in downloaded packs:** Expanded the **Slant** tab for downloaded packs beyond the local dictionary to include slant rhymes, near rhymes, and shared vowel or rhythm matches (e.g., *"enemies"* matching *"remedies [near]"*, *"memories"*, *"friendly"*, and *"tennis"*).
+* **Match percentages on pack rhymes:** Added match score percentages to downloaded rhyme pack pills (e.g., `homies [92%]`).
+* **Pen Meter:** Added near-rhyme data to the Pen Meter readout.
 
 ## Features
 
