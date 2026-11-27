@@ -192,13 +192,13 @@ ONLINE_CURATED_CATALOG = [
         "category": "Malay (165k words)",
         "name": "Bahasa Malaysia",
         "desc": "Over 165,400 words - library from Leipzig Corpora",
-        "url": "https://raw.githubusercontent.com/muhdrasydan99/nocturne-words-library/refs/heads/main/ms_165k.txt",
+        "url": "https://raw.githubusercontent.com/muhdrasydan99/nocturne-words-library/refs/heads/main/lang/ms_165k.txt",
     },
     {
      "category": "English",
         "name": "English",
         "desc": "Over 137,485 words - library from Leipzig Corpora ",
-        "url": "https://raw.githubusercontent.com/muhdrasydan99/nocturne-words-library/refs/heads/main/en_137k.txt",
+        "url": "https://raw.githubusercontent.com/muhdrasydan99/nocturne-words-library/refs/heads/main/lang/en_137k.txt",
     },
 ]
 
