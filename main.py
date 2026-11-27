@@ -4,6 +4,7 @@ import re
 import json
 import hashlib
 import sys
+import threading
 import time
 import math
 import bisect
@@ -39,6 +40,7 @@ from lyric_engine import (
     fetch_repo_wordlist_files, set_active_profile_key, 
     derive_profile_crypto_key, write_encrypted_profile_json,
     read_encrypted_profile_json, check_rhyme_pair, run_songwriting_coach,
+    warm_up_rhyme_index,
 )
 
 def resource_path(relative_path: str) -> Path:
@@ -3396,7 +3398,7 @@ class LyricEditor(QPlainTextEdit):
 
         self.cursor_word_timer = QTimer(self)
         self.cursor_word_timer.setSingleShot(True)
-        self.cursor_word_timer.setInterval(150)
+        self.cursor_word_timer.setInterval(500)
         self.cursor_word_timer.timeout.connect(self._emit_cursor_word)
 
         self.apply_settings(self.cfg)
@@ -3621,10 +3623,13 @@ class LyricEditor(QPlainTextEdit):
         self.gutter.update()
         self.on_analysis_updated(result)
 
-        word = self._extract_word_at_cursor()
-        if word and self.on_cursor_word_changed:
-            self.last_detected_word = word.lower()
-            self.on_cursor_word_changed(word, force_refresh=True)
+        # Refresh the rhyme panel only when the writer has paused. While the cursor
+        # timer is running they are still typing, and that timer will do the lookup.
+        if not self.cursor_word_timer.isActive():
+            word = self._extract_word_at_cursor()
+            if (len(word) >= 3 and word.lower() == self.last_detected_word
+                    and self.on_cursor_word_changed):
+                self.on_cursor_word_changed(word, force_refresh=True)
 
     def _rebuild_search_selections(self):
         doc = self.document()
@@ -5367,6 +5372,7 @@ class NocturneMainWindow(QMainWindow):
         self.load_profile_settings()
         self.load_vault_list()
         self.load_starter_demo()
+        self._warm_rhyme_index()
 
         find_sc = QShortcut(QKeySequence("Ctrl+F"), self)
         find_sc.activated.connect(self.focus_lyric_search)
@@ -8144,9 +8150,14 @@ class NocturneMainWindow(QMainWindow):
         self.on_switch_profile()
 
     # --- LEXICON & SLANG ACTIONS ---
+    def _warm_rhyme_index(self):
+        # builds in the background; does nothing slow if the index is already current
+        threading.Thread(target=warm_up_rhyme_index, daemon=True).start()
+
     def _on_lexicon_updated(self):
         self._rhyme_lookup_cache.clear()
         self._last_inspected_word = ""
+        self._warm_rhyme_index()
         self.lyric_editor.run_analysis()
 
     def open_lexicon_manager(self):
@@ -8268,6 +8279,8 @@ class NocturneMainWindow(QMainWindow):
 
     def on_editor_cursor_word_changed(self, word: str, force_refresh: bool = False):
         if hasattr(self, "btn_live_rhyme") and self.btn_live_rhyme.isChecked():
+            if len(word) < 3 and not force_refresh:
+                return  # probably still typing
             self.lookup_rhyme_word(word, from_live=True, force_refresh=force_refresh)
 
     def _find_rhyming_lines_in_editor(self, target_word: str, rhyme_data: dict) -> list[tuple[int, str, str]]:
