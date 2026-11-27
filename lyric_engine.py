@@ -29,7 +29,6 @@ except Exception:
 
 _ACTIVE_PROFILE_KEYS: dict[str, bytes] = {}
 
-
 def set_active_profile_key(profile_dir: str, raw_key: bytes):
     if profile_dir and raw_key:
         _ACTIVE_PROFILE_KEYS[os.path.abspath(profile_dir)] = raw_key
@@ -184,22 +183,22 @@ def _rhyming_part(phones) -> str:
 # =====================================================================
 ONLINE_CURATED_CATALOG = [
     {
-        "category": "English Slang",
-        "name": "Urban & Hip-Hop Slang (Core)",
-        "desc": "Modern rap, AAVE, and street terminology",
-        "url": "https://raw.githubusercontent.com/dariusk/corpora/master/data/words/proverbs.json",
+        "category": "English",
+        "name": "English - Frequency Words",
+        "desc": "High frequency words - over 200,000 ",
+        "url": "https://raw.githubusercontent.com/zydou/high-frequency-words/refs/heads/master/200k.txt",
     },
     {
-        "category": "Bahasa Melayu",
-        "name": "BM & Bahasa Pasar Extended",
-        "desc": "Malaysian urban, KL street & Manglish vocabulary",
-        "url": "https://raw.githubusercontent.com/hermitdave/FrequencyWords/master/content/2018/ms/ms_50k.txt",
+        "category": "Malay (165k words)",
+        "name": "Bahasa Malaysia",
+        "desc": "Over 165,400 words - library from Leipzig Corpora",
+        "url": "https://raw.githubusercontent.com/muhdrasydan99/nocturne-words-library/refs/heads/main/lang/ms_165k.txt",
     },
     {
-        "category": "English Vocab",
-        "name": "English 10k Frequency Words",
-        "desc": "Core English vocabulary for fast offline rhyme lookup",
-        "url": "https://raw.githubusercontent.com/first20hours/google-10000-english/master/google-10000-english-no-swears.txt",
+     "category": "English",
+        "name": "English",
+        "desc": "Over 137,485 words - library from Leipzig Corpora ",
+        "url": "https://raw.githubusercontent.com/muhdrasydan99/nocturne-words-library/refs/heads/main/lang/en_137k.txt",
     },
 ]
 
@@ -1387,7 +1386,7 @@ def analyze_lyrics(
 
 
 # =====================================================================
-# RHYME ENGINE SIDEBAR LOOKUP (FULL 134K CMU + BM + PACKS + SLANT)
+# RHYME ENGINE SIDEBAR LOOKUP 
 # =====================================================================
 _RHYME_PART_INDEX: dict[str, list[tuple[str, int]]] = {}
 _VOWEL_TAIL_INDEX: dict[str, list[tuple[str, int]]] = {}
@@ -1831,3 +1830,216 @@ def fetch_repo_wordlist_files(repo_full_name: str, branch: str = "main") -> list
                 "raw_url": f"https://raw.githubusercontent.com/{repo_full_name}/{branch}/{path}",
             })
     return files[:40]
+
+def check_rhyme_pair(word_a: str, word_b: str) -> dict:
+    """Compare two words/phrases and return phonetic similarity breakdown."""
+    w1 = re.sub(r"[^a-zA-Z0-9'-]", "", (word_a or "").strip().lower())
+    w2 = re.sub(r"[^a-zA-Z0-9'-]", "", (word_b or "").strip().lower())
+
+    if not w1 or not w2:
+        return {"score": 0, "label": "Enter 2 words", "phon_a": "-", "phon_b": "-", "match_part": "-"}
+
+    if w1 == w2:
+        return {"score": 100, "label": "Identical Word", "phon_a": w1.upper(), "phon_b": w2.upper(), "match_part": w1.upper()}
+
+    # Analisis kedua-dua perkataan melalui enjin sedia ada
+    sample_text = f"{w1}\n{w2}"
+    res = analyze_lyrics(sample_text, rhyme_window=4, granularity="syllable")
+    tokens = res.get("tokens", [])
+
+    tok_a = tokens[0] if len(tokens) >= 1 else {}
+    tok_b = tokens[1] if len(tokens) >= 2 else {}
+
+    key_a = str(tok_a.get("rhyme_key") or tok_a.get("phonetic") or w1[-3:])
+    key_b = str(tok_b.get("rhyme_key") or tok_b.get("phonetic") or w2[-3:])
+
+    is_exact_group = (
+        tok_a.get("rhyme_group") is not None
+        and tok_a.get("rhyme_group") == tok_b.get("rhyme_group")
+    )
+    is_near = bool(tok_a.get("near_rhyme") or tok_b.get("near_rhyme"))
+
+    # Kira persamaan ekor fonetik / vokal
+    tail_a = key_a.split("-")[-1] if "-" in key_a else key_a[-3:]
+    tail_b = key_b.split("-")[-1] if "-" in key_b else key_b[-3:]
+
+    vowels_a = "".join(re.findall(r"[aeiou]+", w1))
+    vowels_b = "".join(re.findall(r"[aeiou]+", w2))
+
+    if is_exact_group:
+        score = 96 if tail_a == tail_b else 88
+        label = "🔥 Perfect / Strong Rhyme"
+    elif tail_a == tail_b and len(tail_a) >= 2:
+        score = 85
+        label = "✨ End-Syllable Rhyme"
+    elif is_near or (vowels_a and vowels_b and vowels_a[-2:] == vowels_b[-2:]):
+        score = 68
+        label = "〰 Slant / Assonance Match"
+    elif vowels_a and vowels_b and vowels_a[-1:] == vowels_b[-1:]:
+        score = 45
+        label = "🔸 Loose Vowel Match"
+    else:
+        score = 12
+        label = "✖ Weak / No Rhyme"
+
+    return {
+        "score": score,
+        "label": label,
+        "phon_a": key_a.upper(),
+        "phon_b": key_b.upper(),
+        "match_part": tail_a.upper() if score >= 45 else "NONE",
+    }
+
+def run_songwriting_coach(lyrics_text: str, mode: str = "critique", focus_problem: str = "") -> dict:
+    """Offline Songwriting Coach following Vocaler SKILL.md rules (no ghostwriting, quote real lines)."""
+    raw_lines = [ln.strip() for ln in (lyrics_text or "").splitlines()]
+    lyric_lines = [ln for ln in raw_lines if ln and not (ln.startswith("[") and ln.endswith("]"))]
+    section_headers = [ln.upper() for ln in raw_lines if ln.startswith("[") and ln.endswith("]")]
+
+    # 1. Mode: Writer's Block (tidak perlukan lirik penuh)
+    if mode == "block":
+        exercises = [
+            ("Object Writing (5 Mins)", "Pick one physical object near you right now (e.g. a cracked phone screen, cold kopi, rain on zinc). Write non-stop for 5 minutes using only the 5 senses—no rhyming allowed."),
+            ("Destination Writing", "Write your ending hook line first—the exact truth you want the listener to remember—then write 4 bars leading into that landing."),
+            ("Title-First Constraint", "Lock a 2-to-4 word song title. Every bar in your first 8 lines must connect back to an image implied by that title."),
+        ]
+        ex_title, ex_desc = exercises[len(lyric_lines) % len(exercises)]
+        return {
+            "what_works": "You showed up to the blank page with a clear intent to break through resistance instead of forcing generic filler bars.",
+            "notes": [
+                "Waiting for a 'perfect' opening bar stalls momentum (why: your inner editor blocks raw ideas before they exist) — Ask yourself: What is the ugliest, most honest 4-bar version I can write in 3 minutes?",
+                "Starting with abstract emotions ('sad', 'hustle', 'pain') feels vague (why: listeners connect to scenes they can picture) — Ask yourself: What specific place, time, or object proves that feeling?",
+            ],
+            "exercise": f"{ex_title}: {ex_desc}",
+            "next_step": "Set a 10-minute timer, write 8 unedited lines in the canvas without hitting Backspace, then run Professional Critique.",
+        }
+
+    if not lyric_lines:
+        return {
+            "what_works": "Your canvas is clean and ready for a fresh draft.",
+            "notes": [
+                "No lyrics detected in the active editor yet (why: feedback requires real lines to quote and measure) — Ask yourself: What single moment or story is this track about?",
+            ],
+            "exercise": "10-Minute Timed Draft: Write at least 8 bars in your natural voice before checking rhymes.",
+            "next_step": "Draft 4 to 8 bars in the editor, then click Analyze again.",
+        }
+
+    # Analisis baris melalui enjin fonetik sedia ada
+    analysis = analyze_lyrics("\n".join(lyric_lines), rhyme_window=4, granularity="syllable")
+    tokens = analysis.get("tokens", [])
+
+    # Kira suku kata & skema rima hujung setiap baris
+    line_syllables = []
+    end_keys = []
+    for idx, ln in enumerate(lyric_lines):
+        words = re.findall(r"[a-zA-Z0-9'-]+", ln.lower())
+        syl = sum(max(1, len(re.findall(r"[aeiouy]+", w))) for w in words) if words else 0
+        line_syllables.append(syl)
+        line_toks = [t for t in tokens if t.get("line") == idx]
+        if line_toks:
+            end_keys.append(str(line_toks[-1].get("rhyme_key") or words[-1][-2:]))
+        else:
+            end_keys.append(words[-1][-2:] if words else "")
+
+    # Kenal pasti skema rima 4 baris pertama
+    scheme_letters = []
+    seen_keys = {}
+    alphabet = "ABCD"
+    for k in end_keys[:4]:
+        if k not in seen_keys:
+            seen_keys[k] = alphabet[len(seen_keys)] if len(seen_keys) < 4 else "X"
+        scheme_letters.append(seen_keys[k])
+    rhyme_scheme = "".join(scheme_letters) if len(scheme_letters) == 4 else ""
+
+    # Cari baris paling kuat untuk "What works"
+    best_idx = 0
+    best_score = -1
+    for i, ln in enumerate(lyric_lines):
+        w_cnt = len(ln.split())
+        # Beri keutamaan kepada baris dengan kepadatan suku kata seimbang & perkataan konkrit
+        sc = w_cnt + (3 if 7 <= line_syllables[i] <= 14 else 0)
+        if sc > best_score:
+            best_score = sc
+            best_idx = i
+
+    quoted_best = lyric_lines[best_idx]
+    scheme_note = f" Your opening 4-bar end-rhyme scheme locks into {rhyme_scheme}." if rhyme_scheme and len(set(rhyme_scheme)) < 4 else ""
+    what_works = f"Line {best_idx + 1} (\"{quoted_best}\") carries clear rhythmic momentum ({line_syllables[best_idx]} syllables).{scheme_note}"
+
+    # Bina Notes (maksimum 3)
+    notes = []
+
+    # Semak Clichés (EN & BM)
+    cliches = [
+        "from the bottom", "started from the bottom", "broken heart", "tears fall",
+        "chase my dreams", "chasing dreams", "haters gonna hate", "fake friends",
+        "real ones", "pain inside", "lost in the dark", "hujan turun", "hati luka",
+        "air mata", "mimpi indah", "janji palsu", "dunia kejam"
+    ]
+    found_cliche = None
+    cliche_line_num = 0
+    for i, ln in enumerate(lyric_lines):
+        low = ln.lower()
+        for c in cliches:
+            if c in low:
+                found_cliche = c
+                cliche_line_num = i + 1
+                break
+        if found_cliche:
+            break
+
+    if found_cliche:
+        notes.append(
+            f"Line {cliche_line_num} uses the stock phrase '{found_cliche}' (why: clichés feel predictable so listeners tune out) — Ask yourself: What specific detail from your own life shows this instead?"
+        )
+
+    # Semak Abstract vs Concrete ("Show, don't tell")
+    abstract_words = {"love", "pain", "hate", "sad", "happy", "alone", "lost", "broken", "soul", "dream", "cinta", "rindu", "sedih", "kecewa", "sakit", "jiwa", "sunyi"}
+    all_words = re.findall(r"[a-zA-Z']+", " ".join(lyric_lines).lower())
+    abs_hits = [w for w in all_words if w in abstract_words]
+    if len(abs_hits) >= 2 and len(notes) < 3:
+        sample_abs = ", ".join(dict.fromkeys(abs_hits[:3]))
+        notes.append(
+            f"Heavy reliance on abstract words ({sample_abs}) (why: 'telling' emotions leaves the listener with nothing visual to hold onto) — Ask yourself: Which 2 abstract words can you replace with something a camera could film?"
+        )
+
+    # Semak lompatan suku kata (Cadence / Prosody)
+    if len(line_syllables) >= 2 and len(notes) < 3:
+        diffs = [(abs(line_syllables[i] - line_syllables[i - 1]), i) for i in range(1, len(line_syllables))]
+        max_jump, jump_idx = max(diffs, key=lambda x: x[0])
+        if max_jump >= 6:
+            notes.append(
+                f"Sharp syllable jump between Line {jump_idx} ({line_syllables[jump_idx - 1]} syl) and Line {jump_idx + 1} ({line_syllables[jump_idx]} syl) (why: sudden count swings can trip your vocal pocket on beat) — Ask yourself: Are you intentionally double-timing Line {jump_idx + 1}, or can you trim 2–3 filler words?"
+            )
+
+    # Semak struktur lagu (untuk Finish Song Plan atau draft pendek)
+    if (mode == "finish" or len(lyric_lines) < 12) and len(notes) < 3:
+        has_hook = any("HOOK" in h or "CHORUS" in h for h in section_headers)
+        if not has_hook:
+            notes.append(
+                f"Draft is currently {len(lyric_lines)} lines with no labeled [Hook] / [Chorus] section (why: without a central anchor, verses wander instead of building toward a payoff) — Ask yourself: Which 2 bars in your draft summarize the whole song's thesis?"
+            )
+
+    if not notes:
+        notes.append(
+            f"Your {len(lyric_lines)}-bar flow holds steady cadence, though end-rhymes stay mostly single-syllable (why: multi-syllabic end rhymes elevate replay value) — Ask yourself: Can you bend the last two words of Line 2 and Line 4 to share two vowel sounds?"
+        )
+
+    # Pilih Exercise & Next Step mengikut mode
+    if mode == "finish":
+        exercise = "Destination Writing (10 Mins): Write your 4-bar [Hook] first, then write a 4-bar [Bridge] that flips the perspective before returning to the hook."
+        next_step = "Add [Verse 1] and [Hook] headers in your lyrics, complete the missing section, and check your score in Pen Meter."
+    elif mode == "fix":
+        target = focus_problem.strip() or "your weakest bar"
+        exercise = f"3-Pass Rewrite on '{target}': Write 3 alternate versions of that single line—Pass 1 for pure meaning, Pass 2 for sharper imagery, Pass 3 for tighter rhythm."
+        next_step = "Test your new end-word pair inside the Rhyme Checker on the right panel to verify sound strength."
+    else:
+        exercise = "Object Writing (5 Mins): Pick one physical object mentioned or implied in your verse and list 5 sensory details (sight, sound, texture) to swap into your weak bars."
+        next_step = "Pick Note #1, revise just those lines in the editor, and use Rhyme Checker to verify your updated end rhymes."
+
+    return {
+        "what_works": what_works,
+        "notes": notes[:3],
+        "exercise": exercise,
+        "next_step": next_step,
+    }

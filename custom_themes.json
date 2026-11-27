@@ -1,0 +1,26 @@
+{
+  "sunset": {
+    "accent": "#FF7A45",
+    "accent_border": "rgba(255, 122, 69, 0.45)",
+    "accent_hover": "#FF9B73",
+    "accent_soft": "rgba(255, 122, 69, 0.16)",
+    "bg_base": "#100B09",
+    "bg_elevated": "#251B17",
+    "bg_surface": "#1A1310",
+    "border": "#352721",
+    "id": "sunset",
+    "name": "Sunset Cassette"
+  },
+  "peach": {
+    "accent": "#FDBA8C",
+    "accent_border": "rgba(253, 186, 140, 0.45)",
+    "accent_hover": "#FED4B5",
+    "accent_soft": "rgba(253, 186, 140, 0.16)",
+    "bg_base": "#100D0B",
+    "bg_elevated": "#261F1A",
+    "bg_surface": "#1B1613",
+    "border": "#382E26",
+    "id": "peach",
+    "name": "Peach Soda"
+  }
+}

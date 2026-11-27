@@ -2,49 +2,62 @@
 
 # nocturne
 
-**nocturne** is a songwriting app with a rhyme highlighter. It brings lyric writing, rhyme tools and beat playback together in one dark-themed desktop workspace.
+**nocturne** is a songwriting app with a rhyme highlighter. It brings lyric writing, rhyme tools and beat playback together in one themed desktop workspace.
 
-> **Status:** v1.0 Testing
-
+> **Status:** v1.1.0-beta
 
 <img width="1482" height="942" alt="{398839CD-62E4-478E-B1D8-F198D2BF9B9F}" src="https://github.com/user-attachments/assets/de63aa7d-2544-4b5c-8bbf-77d61b7970ee" />
 
+## What's New in v1.1.0-beta
+
+* **Rhyme Checker:** Instant 2-word phonetic comparator under the Rhyme Engine with percentage match scores, tail breakdown, and quick swap (`⇄`) for English, Bahasa Melayu, and Manglish.
+* **Lyrics Analyzer:** Dedicated dialog accessible from the sidebar offering honest craft critiques, cliché and abstract-word detection, cadence jump checks, writer's block exercises, and song-finishing plans.
+* **Custom Studio Themes:** Live theme switcher powered by JSON palettes with high-contrast foreground text support (including Monochrome Noir).
 
 ## Features
 
-### Lyric editor
-- Rhyme highlighting for end and internal rhymes, with optional near-rhyme underlines
-- Highlighting by rhyming syllable or by whole word
-- Live syllable counter for each bar, with flow cadence warnings
-- Rhyme lookup with filters for English (EN), Bahasa Melayu (BM), language packs and slant rhymes
-- Search within the current lyrics
-- Full-screen lyric preview with auto-scroll
-- Scrapbook for loose bars, hooks and ideas
-- PDF lyric export
+### Lyric editor & Rhyme tools
+
+* Rhyme highlighting for end and internal rhymes, with optional near-rhyme underlines
+* Highlighting by rhyming syllable or by whole word
+* Live syllable counter for each bar, with flow cadence warnings
+* Rhyme lookup with filters for English (EN), Bahasa Melayu (BM), language packs and slant rhymes
+* **Rhyme Checker** for direct side-by-side phonetic comparison and rhyme score percentage
+* Search within the current lyrics
+* Full-screen lyric preview with auto-scroll
+* Scrapbook for loose bars, hooks and ideas
+* **Lyrics Analyzer** for offline craft feedback, targeted exercises, and structural planning
+* PDF lyric export
 
 ### Beat player
-- Load, play and loop beats
-- Metronome with Off, On and Auto modes, plus 4/4, 3/4 and 6/8 time signatures
-- Tap tempo and manual downbeat sync
-- Timestamp markers and lyric line timestamps
+
+* Load, play and loop beats
+* Metronome with Off, On and Auto modes, plus 4/4, 3/4 and 6/8 time signatures
+* Tap tempo and manual downbeat sync
+* Timestamp markers and lyric line timestamps
 
 ### Pen Meter
-- Rates your lyrics and opens a detailed scorecard
+
+* Rates your lyrics and opens a detailed scorecard
 
 ### Vault
-- Save, search and reopen tracks
-- Recycle bin for restoring deleted tracks
+
+* Save, search and reopen tracks
+* Recycle bin for restoring deleted tracks
 
 ### Profiles
-- Up to 9 profiles, each with a unique name
-- Custom avatars
-- Optional PIN lock with encryption of profile data
-- Rename, duplicate, delete, back up and restore (`.zip`)
+
+* Up to 9 profiles, each with a unique name
+* Custom avatars
+* Optional PIN lock with encryption of profile data
+* Rename, duplicate, delete, back up and restore (`.zip`)
 
 ### Customization
-- Custom slang and language packs, including word list import and online search
-- Editor font, size, weight and word wrap settings
-- Auto-save, default BPM and default beat volume settings
+
+* Dynamic UI themes (including Monochrome Noir) with automatic contrast adjustment
+* Custom slang and language packs, including word list import and online search
+* Editor font, size, weight and word wrap settings
+* Auto-save, default BPM and default beat volume settings
 
 ## Keyboard shortcuts
 
@@ -58,8 +71,8 @@
 
 ## Installation (Windows)
 
-1. Run `Nocturne_Setup_1.0.exe`.
-2. Follow the setup wizard.
+1. Run `Nocturne_Setup_1.1.0-beta.exe` (or `Nocturne_v1.1.0-beta.exe`).
+2. Follow the setup wizard if using the installer.
 3. Open **Nocturne** from the Start menu or the optional desktop shortcut.
 
 The default install location is `%LOCALAPPDATA%\Programs\Nocturne`. Administrator rights are not required.
@@ -69,7 +82,8 @@ The default install location is `%LOCALAPPDATA%\Programs\Nocturne`. Administrato
 1. Choose a profile, or create a new one.
 2. Enter a track title and start writing.
 3. Load a beat from the **beat player** panel.
-4. Click **Save Track** to keep your work in the vault.
+4. Use **Rhyme Checker** on the right panel to test two words side by side, or click **Analyze** under the scrapbook for a full craft breakdown.
+5. Click **Save Track** to keep your work in the vault.
 
 ## Running from source
 
@@ -82,16 +96,50 @@ python main.py
 
 [FFmpeg](https://ffmpeg.org/) is recommended. It is used as a fallback when beat audio cannot be read directly.
 
+## Building from source (Windows)
+
+If you want to compile the standalone executable and Windows installer yourself instead of downloading from Releases:
+
+### 1. Build the executable
+
+1. Double-click `build.bat`. An internet connection is required to install dependencies, and the process may take a few minutes.
+2. Once finished, the compiled files will be located in `dist\Nocturne\`.
+3. If you add extra dependencies to `lyric_engine.py`, append those package names to the `pip install` line inside `build.bat`.
+
+### 2. Test before packaging
+
+Run `dist\Nocturne\Nocturne.exe` and verify the core features:
+
+* Create a profile and save a track
+* Load an MP3 beat and test the metronome in **AUTO** mode
+* Check rhymes, **Rhyme Checker**, and **Lyrics Analyzer**
+* Export a PDF and create a `.zip` backup
+
+> **Troubleshooting:** If the app closes immediately on launch, change `--windowed` to `--console` in `build.bat`, rebuild, and run `Nocturne.exe` from Command Prompt to inspect the error traceback.
+
+### 3. Create the installer
+
+1. Open `installer.iss` with [Inno Setup](https://jrsoftware.org/isinfo.php) and press **Compile** (`F9`).
+2. The resulting installer will be generated at `output\Nocturne_Setup_1.1.0-beta.exe` (your local test `profiles` folder is automatically excluded).
+
+### 4. Verify offline data & licensing
+
+Before redistributing your build, test the installer on a clean machine, Windows Sandbox, or VM without Python installed—and verify everything works with the internet turned off:
+
+* **Offline corpora (`lyric_engine.py`):** `main.py` calls `ensure_offline_corpora()` on startup. Make sure any downloaded or cached phonetic/dictionary files are copied into your distribution if you need 100% offline support out of the box.
+* **Fonts (SF Pro vs. Inter):** The app attempts to fetch SF Pro from a third-party GitHub repository if missing. Because Apple's license restricts bundling and redistributing SF Pro, do not include it in your installer—consider switching to an open-source font like **Inter** for public distribution.
+* **FFmpeg:** If you bundle FFmpeg with your build, ensure you comply with the license terms of the build you choose (LGPL or GPL).
+
 ## Your data
 
 Profiles are stored in the `profiles` folder inside the app directory.
 
-- Export a profile backup regularly, especially before updating or uninstalling.
-- Keep your PIN somewhere safe.
+* Export a profile backup regularly, especially before updating or uninstalling.
+* Keep your PIN somewhere safe.
 
 ## Internet use
 
-Some features use an internet connection, such as online word list search and downloads. The app also tries to download missing SF Pro font files from a third-party GitHub repository.
+Core features—including the **Rhyme Engine**, **Rhyme Checker**, **Pen Meter**, and **Lyrics Analyzer**—work completely offline. An internet connection is only used for optional online word list downloads or fetching missing SF Pro font files.
 
 ## Credits
 
