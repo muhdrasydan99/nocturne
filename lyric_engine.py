@@ -234,6 +234,26 @@ VOWEL_FEATURES = {
     "OY": (1.2, 1.4, 1.0),  # boy / noise
 }
 
+# Vowels that ears routinely substitute for each other in near rhymes.
+# Used only to *bucket* candidates for the slant tab; scoring still uses the
+# real articulatory distance from VOWEL_FEATURES.
+VOWEL_FAMILIES = {
+    "IY": "IY", "IH": "IY",
+    "EY": "EY",
+    "EH": "EH", "AE": "EH",
+    "AA": "AH", "AO": "AH", "AH": "AH",
+    "OW": "OW",
+    "UH": "UW", "UW": "UW",
+    "ER": "ER",
+    "AY": "AY", "AW": "AW", "OY": "OY",
+}
+
+
+def _vowel_family(vowel: str) -> str:
+    base = re.sub(r"\d", "", vowel or "")
+    return VOWEL_FAMILIES.get(base, base)
+
+
 CONSONANT_FEATURES = {
     "P": (0, 0, 0), "B": (0, 0, 1),
     "T": (2, 0, 0), "D": (2, 0, 1),
@@ -427,7 +447,17 @@ BM_LEXICON_HINTS = {
 }
 
 
-def detect_word_language(word_low: str, custom_bm_words: set[str]) -> str:
+# Tiny English function words. Without CMU, the Malay suffix heuristic used to
+# grab "i" (ends in -i) and rhyme it as a Malay /i/ instead of English /ay/.
+_EN_CORE_WORDS = frozenset({
+    "i", "a", "an", "the", "my", "me", "we", "he", "she", "be", "is", "are",
+    "am", "was", "were", "you", "your", "it", "its", "to", "of", "in", "on",
+    "at", "for", "and", "or", "but", "not", "no", "yes", "do", "does", "did",
+})
+
+
+def detect_word_language(word_low: str, custom_bm_words: set[str],
+                         pack_langs: dict[str, str] | None = None) -> str:
     if word_low in BM_LEXICON_HINTS:
         return "BM"
     if word_low in EN_ARPABET_OVERRIDES:
@@ -435,7 +465,10 @@ def detect_word_language(word_low: str, custom_bm_words: set[str]) -> str:
     if _lookup_cmu_phones(word_low):
         return "EN"
     if word_low in custom_bm_words:
-        return "BM"
+        # Packs now remember whether they are Malay or another language.
+        return (pack_langs or {}).get(word_low, "BM")
+    if word_low in _EN_CORE_WORDS:
+        return "EN"
     if re.search(r"(ny|sy|kh|ng$|[aeiou]k$|[aeiou]h$)", word_low) and not re.search(r"(th|sh|ch|ph|wh|ight|tion|ough)", word_low):
         if re.match(r"^(me|ber|ter|pe|se|ke|di)", word_low) or re.search(r"(kan|an|i)$", word_low):
             return "BM"
@@ -766,6 +799,7 @@ class LexiconManager:
         self.custom_slang = {}
         self.language_packs = {}
         self.active_pack_words = set()
+        self.active_pack_lang: dict[str, str] = {}
         self.pron_overrides = {}
         self._phoneme_cache = {}
 
@@ -879,14 +913,58 @@ class LexiconManager:
             self.profile_dir,
         )
 
+    @staticmethod
+    def infer_pack_language(pack_name: str, words: list[str]) -> str:
+        """Decide whether a downloaded/imported pack is Malay or another language.
+
+        Packs used to be treated as BM by default, which made English word packs
+        (including the built-in frequency list) get BM phonetics. The pack name
+        is the strongest signal; if it is generic, sample the words instead.
+        """
+        name = (pack_name or "").lower()
+        bm_name_hints = (
+            "malay", "melayu", "bahasa", "manglish", "perak", "sabah",
+            "sarawak", "indonesia", "kampung", "bm_", "ms_", "ms ",
+        )
+        en_name_hints = (
+            "english", "frequency", "oxford", "wordlist", "word list",
+            "scrabble", "rap", "hip hop", "spanish", "french", "german",
+            "japanese", "romaji", "korean", "portuguese", "italian",
+            "tagalog", "thai", "vietnamese", "arabic", "hindi",
+        )
+        if any(h in name for h in bm_name_hints):
+            return "BM"
+        if any(h in name for h in en_name_hints):
+            return "EN"
+
+        sample = [str(w).strip().lower() for w in (words or [])[:400] if str(w).strip()]
+        if sample:
+            bm_markers = {"yang", "dan", "aku", "kau", "tak", "ini", "itu", "dengan",
+                          "untuk", "dalam", "tidak", "ada", "kita", "kami", "mereka",
+                          "saya", "awak", "lah", "je", "ni", "tu", "kat"}
+            bm_hits = sum(1 for w in sample if w in BM_LEXICON_HINTS or w in bm_markers)
+            if bm_hits >= max(3, len(sample) // 20):
+                return "BM"
+        return "BM"
+
     def _rebuild_active_pack_set(self):
         self.version += 1
         words = set()
-        for pdata in self.language_packs.values():
-            if pdata.get("enabled", True):
-                for w in pdata.get("words", []):
-                    words.add(w.strip().lower())
+        lang_map: dict[str, str] = {}
+        for pack_name, pdata in self.language_packs.items():
+            if not pdata.get("enabled", True):
+                continue
+            pack_lang = pdata.get("lang") or self.infer_pack_language(pack_name, pdata.get("words", []))
+            for w in pdata.get("words", []):
+                clean = w.strip().lower()
+                if not clean:
+                    continue
+                words.add(clean)
+                # BM wins if the same word is listed in more than one pack.
+                if lang_map.get(clean) != "BM":
+                    lang_map[clean] = pack_lang
         self.active_pack_words = words
+        self.active_pack_lang = lang_map
 
     def add_custom_slang(self, word: str, meaning: str, tag: str = "CUSTOM SLANG"):
         key = word.strip().lower()
@@ -903,9 +981,11 @@ class LexiconManager:
 
     def add_language_pack(self, pack_name: str, words: list[str]) -> int:
         clean = sorted(list({w.strip().lower() for w in words if len(w.strip()) >= 2}))
-        existing = set(self.language_packs.get(pack_name, {}).get("words", []))
+        existing_data = self.language_packs.get(pack_name, {})
+        existing = set(existing_data.get("words", []))
         merged = sorted(list(existing.union(clean)))
-        self.language_packs[pack_name] = {"enabled": True, "words": merged}
+        pack_lang = existing_data.get("lang") or self.infer_pack_language(pack_name, merged)
+        self.language_packs[pack_name] = {"enabled": True, "words": merged, "lang": pack_lang}
         self._rebuild_active_pack_set()
         self._save_packs()
         return len(merged)
@@ -934,7 +1014,8 @@ class LexiconManager:
         if cached is not None:
             return cached
 
-        lang = force_lang or detect_word_language(w_low, self.active_pack_words)
+        lang = force_lang or detect_word_language(
+            w_low, self.active_pack_words, self.active_pack_lang)
         override = self.pron_overrides.get(w_low)
         phones = []
 
@@ -979,7 +1060,9 @@ def _is_known_english(w_low: str) -> bool:
 
 
 def _is_ambiguous_word(w_low: str) -> bool:
-    hinted = w_low in BM_LEXICON_HINTS or w_low in LEXICON.active_pack_words
+    hinted = (w_low in BM_LEXICON_HINTS
+              or (w_low in LEXICON.active_pack_words
+                  and LEXICON.active_pack_lang.get(w_low, "BM") == "BM"))
     return hinted and w_low not in EN_ARPABET_OVERRIDES and bool(_all_cmu_pronunciations(w_low))
 
 
@@ -987,7 +1070,9 @@ def _line_language_for_ambiguous(matches) -> str:
     en_votes = bm_votes = 0
     for m in matches:
         w = re.sub(r"^[^A-Za-z0-9]+|[^A-Za-z0-9]+$", "", m.group(0)).lower()
-        hinted = w in BM_LEXICON_HINTS or w in LEXICON.active_pack_words
+        hinted = (w in BM_LEXICON_HINTS
+                  or (w in LEXICON.active_pack_words
+                      and LEXICON.active_pack_lang.get(w, "BM") == "BM"))
         if hinted and not _is_known_english(w):
             bm_votes += 1
         elif not hinted and _is_known_english(w):
@@ -1022,7 +1107,9 @@ def _tokenize_lyrics(text: str) -> tuple[list[dict], list[dict]]:
                 raw_tok = m.group(0)
                 w_low = re.sub(r"^[^A-Za-z0-9]+|[^A-Za-z0-9]+$", "", raw_tok).lower()
                 force = ambiguous_lang if _is_ambiguous_word(w_low) else None
-                if force is None and HAS_CMU_SOURCE and _looks_malay(w_low):
+                if (force is None and HAS_CMU_SOURCE
+                        and w_low not in LEXICON.active_pack_words
+                        and _looks_malay(w_low)):
                     force = "BM"
                 prof = LEXICON.get_phonetic_profile(raw_tok, force_lang=force)
                 if prof["syllables"] == 0:
@@ -1203,16 +1290,28 @@ def _token_rhyme_key(tok: dict) -> tuple | None:
 NEAR_RHYME_MIN_CONF = 66.0
 
 
+def _near_pair_rhyme_strength(tok_a: dict, tok_b: dict) -> tuple[float, str]:
+    """Near-rhyme strength without the exact-key shortcut.
+
+    The pen meter uses this to surface slant relationships even when the
+    analyser has already bucketed two words as an exact rhyme (for example
+    'enemies' / 'memories', which are near under the stress-aware scorer).
+    """
+    if tok_a["norm"] == tok_b["norm"] or not tok_a["units"] or not tok_b["units"]:
+        return 0.0, "None"
+    conf, cat, _ = score_rhyme_pair(tok_a["units"], tok_b["units"])
+    if cat in ("Slant Rhyme", "Assonance") and conf >= NEAR_RHYME_MIN_CONF:
+        return conf, cat
+    return 0.0, "None"
+
+
 def _near_rhyme_strength(tok_a: dict, tok_b: dict) -> tuple[float, str]:
     if tok_a["norm"] == tok_b["norm"] or not tok_a["units"] or not tok_b["units"]:
         return 0.0, "None"
     ka, kb = _token_rhyme_key(tok_a), _token_rhyme_key(tok_b)
     if ka is not None and ka == kb:
         return 0.0, "None"
-    conf, cat, _ = score_rhyme_pair(tok_a["units"], tok_b["units"])
-    if cat in ("Slant Rhyme", "Assonance") and conf >= NEAR_RHYME_MIN_CONF:
-        return conf, cat
-    return 0.0, "None"
+    return _near_pair_rhyme_strength(tok_a, tok_b)
 
 
 DEFAULT_PALETTE_SIZE = 8
@@ -1401,9 +1500,183 @@ def analyze_lyrics(
 # RHYME ENGINE SIDEBAR LOOKUP 
 # =====================================================================
 _RHYME_PART_INDEX: dict[str, list[tuple[str, int]]] = {}
-_VOWEL_TAIL_INDEX: dict[str, list[tuple[str, int]]] = {}
+# Local near-rhyme buckets: first-vowel family -> last-vowel family -> entries.
+_NEAR_INDEX: dict[str, dict[str, list[tuple]]] = {}
 _BM_RHYME_INDEX: list[tuple[str, dict]] = []
-_BM_RHYME_INDEX_SIG: tuple[int, int] = (-1, -1)
+_BM_RHYME_INDEX_SIG: tuple[int, ...] = (-1,)
+
+# Slant-tab tuning. Near rhymes are ranked, not just filtered, so a shared
+# stressed vowel + similar coda lands above a merely assonant word.
+NEAREST_LIMIT = 12
+NEAR_SLANT_LIMIT = 80
+NEAR_SLANT_MIN_CONF = 58.0
+NEAR_BROAD_SCAN_CAP = 30000
+
+
+def _make_near_entry(word: str, units: list[dict], syllables: int, lang: str) -> tuple | None:
+    """Compact, immutable description of a word's rhyme tail for slant scoring."""
+    tail = _rhyme_tail_units(units)
+    if not tail:
+        return None
+    tail = tail[:5]  # long words never need more than five rhyme syllables
+    vowels = tuple(u["vowel"] for u in tail)
+    if not vowels:
+        return None
+    return (
+        word,
+        max(1, int(syllables or len(units))),
+        vowels,
+        tuple(tuple(u.get("coda") or ()) for u in tail),
+        tuple(int(u.get("stress") or 0) for u in tail),
+        lang,
+    )
+
+
+def _add_near_entry(table: dict, entry: tuple | None) -> None:
+    if not entry:
+        return
+    first = _vowel_family(entry[2][0])
+    last = _vowel_family(entry[2][-1])
+    table.setdefault(first, {}).setdefault(last, []).append(entry)
+
+
+def _vowel_lcs(a: tuple[str, ...], b: tuple[str, ...]) -> int:
+    """Longest common subsequence where vowels may match by articulatory similarity."""
+    prev = [0] * (len(b) + 1)
+    for va in a:
+        cur = [0]
+        for j, vb in enumerate(b):
+            if va == vb or vowel_similarity(va, vb) >= 0.62:
+                cur.append(prev[j] + 1)
+            else:
+                cur.append(max(cur[-1], prev[j + 1]))
+        prev = cur
+    return prev[-1]
+
+
+def _near_rhyme_percent(target: tuple, cand: tuple) -> float:
+    """0-100 near-rhyme percentage: shared vowels, coda and stress placement.
+
+    Syllable distance is deliberately *not* a multiplier here; it is used to
+    rank equally-close candidates in _collect_near_scores instead, so the
+    percentage reflects sound similarity rather than length alone.
+    """
+    tv, tc, ts = target[2], target[3], target[4]
+    cv, cc, cs = cand[2], cand[3], cand[4]
+    if not tv or not cv:
+        return 0.0
+
+    first_sim = vowel_similarity(tv[0], cv[0])
+    if first_sim < 0.72:
+        return 0.0
+
+    last_sim = vowel_similarity(tv[-1], cv[-1])
+    overlap = _vowel_lcs(tv, cv) / float(max(len(tv), len(cv)))
+
+    span = max(len(tc), len(cc), 1)
+    coda_sim = sum(
+        consonant_seq_similarity(tc[i] if i < len(tc) else (),
+                                cc[i] if i < len(cc) else ())
+        for i in range(span)
+    ) / float(span)
+
+    conf = 100.0 * (
+        0.35 * first_sim
+        + 0.25 * last_sim
+        + 0.30 * overlap
+        + 0.10 * coda_sim
+    )
+    # Final vowel is the anchor of a rhyme; sharing it exactly is worth a nudge.
+    if tv[-1] == cv[-1]:
+        conf += 5.0
+
+    stress_span = max(len(ts), len(cs), 1)
+    stress_sim = sum(
+        1.0 for i in range(stress_span)
+        if i < len(ts) and i < len(cs) and (ts[i] > 0) == (cs[i] > 0)
+    ) / float(stress_span)
+    conf *= 0.98 + 0.02 * stress_sim
+    return min(99.0, conf)
+
+
+def _collect_near_scores(table: dict, target: tuple, skip_words: set[str],
+                         want: int) -> list[tuple]:
+    if not table:
+        return []
+    first = _vowel_family(target[2][0])
+    last = _vowel_family(target[2][-1])
+    bucket = table.get(first)
+    if not bucket:
+        return []
+
+    scored: list[tuple] = []
+    seen: set[str] = set()
+    budget = [NEAR_BROAD_SCAN_CAP]
+
+    def _scan(groups) -> None:
+        for group in groups:
+            for cand in group:
+                if budget[0] <= 0:
+                    return
+                budget[0] -= 1
+                word = cand[0]
+                if word == target[0] or word in seen or word in skip_words or word in STOPWORDS:
+                    continue
+                seen.add(word)
+                conf = _near_rhyme_percent(target, cand)
+                if conf >= NEAR_SLANT_MIN_CONF:
+                    scored.append((conf, abs(cand[1] - target[1]), len(word), word, cand[1]))
+
+    # Best bucket first: words that share both the stressed and final vowel.
+    _scan((bucket.get(last, ()),))
+    if len(scored) < want:
+        _scan([group for key, group in bucket.items() if key != last])
+
+    scored.sort(key=lambda item: (-item[0], item[1], item[2], item[3]))
+    return scored[:want]
+
+
+def _rhyme_pct(conf: float, floor: int = 0, ceiling: int = 100) -> int:
+    """Display-ready percentage, half-up and kept inside the given band."""
+    value = max(0, int(float(conf or 0.0) + 0.5))
+    return max(floor, min(ceiling, value))
+
+
+def _exact_rhyme_pct(target_units: list[dict], word: str,
+                     force_lang: str | None = None, floor: int = 0) -> int:
+    prof = LEXICON.get_phonetic_profile(word, force_lang=force_lang)
+    cand_units = prof.get("units") or extract_syllable_units(prof.get("phones") or [])
+    if not target_units or not cand_units:
+        return floor
+    conf, _category, _n = score_rhyme_pair(target_units, cand_units)
+    return _rhyme_pct(conf, floor)
+
+
+def _find_slant_rhymes(target_prof: dict, is_bm: bool, exact_words: set[str],
+                       limit: int) -> list[str]:
+    units = target_prof.get("units") or extract_syllable_units(target_prof.get("phones") or [])
+    target = _make_near_entry(
+        target_prof.get("norm", ""), units, target_prof.get("syllables", 0),
+        "BM" if is_bm else "EN",
+    )
+    if not target:
+        return []
+
+    want = max(1, min(int(limit or NEAREST_LIMIT), NEAR_SLANT_LIMIT))
+    skip = set(exact_words)
+    skip.add(target[0])
+
+    tables = [_INDEX.get("near_bm")] if is_bm else [_NEAR_INDEX, _INDEX.get("near")]
+    best: dict[str, tuple] = {}
+    for table in tables:
+        for conf, syl_gap, _wlen, word, sylls in _collect_near_scores(table, target, skip, want):
+            current = best.get(word)
+            if current is None or conf > current[0]:
+                best[word] = (conf, syl_gap, sylls)
+
+    ranked = sorted(best.items(), key=lambda kv: (-kv[1][0], kv[1][1], len(kv[0]), kv[0]))
+    return [f"{word} [near] [{_rhyme_pct(meta[0], ceiling=95)}%]"
+            for word, meta in ranked[:want]]
 
 
 _CMU_INDEX_LOCK = threading.RLock()
@@ -1434,22 +1707,13 @@ def _build_cmu_indexes() -> None:
         if pair in seen_pairs:
             return
         seen_pairs.add(pair)
-        syls = sum(1 for p in phones if re.sub(r"\d", "", p) in VOWEL_FEATURES)
-        syls = max(1, syls)
+        units = extract_syllable_units(list(phones))
+        syls = max(1, len(units))
         _RHYME_PART_INDEX.setdefault(part, []).append((w_low, syls))
 
-        part_tokens = part.split()
-        if part_tokens:
-            lead_vowel = part_tokens[0]
-            if lead_vowel in VOWEL_FEATURES and (w_low, lead_vowel) not in near_done:
-                near_done.add((w_low, lead_vowel))
-                tail = _rhyme_tail_units(extract_syllable_units(
-                    list(EN_ARPABET_OVERRIDES.get(w_low) or phones)))
-                if tail and tail[0]["vowel"] == lead_vowel:
-                    key = tuple(u["vowel"] for u in tail)
-                    codas = tuple(tuple(u["coda"]) for u in tail)
-                    # words with the same ending share one group
-                    _VOWEL_TAIL_INDEX.setdefault(key, {}).setdefault(codas, []).append(w_low)
+        if w_low not in near_done:
+            near_done.add(w_low)
+            _add_near_entry(_NEAR_INDEX, _make_near_entry(w_low, units, syls, "EN"))
 
     for w_ov, ph_ov in EN_ARPABET_OVERRIDES.items():
         _index_word(w_ov, ph_ov)
@@ -1467,17 +1731,20 @@ def _build_cmu_indexes() -> None:
 
     for part_k in _RHYME_PART_INDEX:
         _RHYME_PART_INDEX[part_k].sort(key=lambda item: (item[1], item[0]))
+    for family in _NEAR_INDEX.values():
+        for group in family.values():
+            group.sort(key=lambda item: (len(item[0]), item[0]))
 
 
 def _get_bm_rhyme_pool() -> list[tuple[str, dict]]:
     global _BM_RHYME_INDEX, _BM_RHYME_INDEX_SIG
-    sig = (len(BM_LEXICON_HINTS), len(LEXICON.active_pack_words))
+    sig = (len(BM_LEXICON_HINTS), len(LEXICON.active_pack_words), LEXICON.version)
     if _BM_RHYME_INDEX and _BM_RHYME_INDEX_SIG == sig:
         return _BM_RHYME_INDEX
 
     bm_words = set(BM_LEXICON_HINTS)
     for w in LEXICON.active_pack_words:
-        if detect_word_language(w, LEXICON.active_pack_words) == "BM":
+        if LEXICON.active_pack_lang.get(w, "BM") == "BM":
             bm_words.add(w)
 
     built = []
@@ -1488,9 +1755,6 @@ def _get_bm_rhyme_pool() -> list[tuple[str, dict]]:
     _BM_RHYME_INDEX = built
     _BM_RHYME_INDEX_SIG = sig
     return _BM_RHYME_INDEX
-
-
-NEAREST_LIMIT = 12
 
 
 def _vowel_positions(phones: tuple[str, ...]) -> list[int]:
@@ -1518,6 +1782,8 @@ def _bm_rhyme_tier(target: tuple[str, ...], cand: tuple[str, ...]) -> int:
 
 
 def _looks_malay(word_low: str) -> bool:
+    if word_low in _EN_CORE_WORDS:
+        return False
     if word_low in EN_ARPABET_OVERRIDES or _all_cmu_pronunciations(word_low):
         return False
     if re.search(r"(th|ph|wh|ck|ee|oo|ou|ow|igh|tion|q|x|[^aeiou]e$|[^aeiou]y$)", word_low):
@@ -1529,6 +1795,18 @@ def _syl_badge(syls: int) -> str:
     return f" ·{syls}s" if syls >= 2 else ""
 
 
+def _base_rhyme_word(label: str) -> str:
+    """Strip display decorations (·3s, [slang], [near], [92%]) from a rhyme pill."""
+    text = str(label or "")
+    while True:
+        cleaned = re.sub(
+            r"\s*(?:·\s*\d+\s*s?|\[[^\]]*\]|\(slang\)|🔥)\s*$", "", text
+        )
+        if cleaned == text:
+            return text.strip()
+        text = cleaned
+
+
 # ---------------------------------------------------------------------
 # FAST RHYME INDEX (built once, supports 300k+ pack words)
 # Every possible match shares the target's final sound (last vowel + what follows),
@@ -1536,7 +1814,7 @@ def _syl_badge(syls: int) -> str:
 # Entry: (word, stripped_phones, syllables, lang, rhyming_part)
 # ---------------------------------------------------------------------
 _INDEX_LOCK = threading.RLock()
-_INDEX = {"sig": None, "bm": {}, "custom": {}}
+_INDEX = {"sig": None, "bm": {}, "custom": {}, "near": {}, "near_bm": {}}
 _RESULT_CACHE: OrderedDict = OrderedDict()
 _RESULT_CACHE_SIZE = 512
 BUILD_SLICE_SECONDS = 0.004  # work this long ...
@@ -1572,6 +1850,10 @@ def _get_rhyme_index() -> dict:
         slang = set(LEXICON.custom_slang)
         bm: dict = {}
         custom: dict = {}
+        near: dict = {}
+        near_bm: dict = {}
+        near_done: set[str] = set()
+        near_bm_done: set[str] = set()
         shared: dict = {}
         # Pausing often lets the UI thread run while this builds in the background.
         # Automatic garbage collection is paused too: with this many new objects it
@@ -1592,12 +1874,22 @@ def _get_rhyme_index() -> dict:
                 prof = LEXICON.get_phonetic_profile(tail_word, cache=False)
                 if raw in packs or raw in slang:
                     _add_to_index(custom, word, prof, shared)
-                if raw in BM_LEXICON_HINTS or (
-                        raw in packs and detect_word_language(raw, packs) == "BM"):
+                    if prof["lang"] != "BM" and raw not in near_done:
+                        near_done.add(raw)
+                        _add_near_entry(near, _make_near_entry(
+                            word, prof["units"], prof["syllables"], prof["lang"]))
+                is_bm_pack_word = (raw in packs
+                                   and LEXICON.active_pack_lang.get(raw, "BM") == "BM")
+                if raw in BM_LEXICON_HINTS or is_bm_pack_word or (
+                        raw in slang and prof["lang"] == "BM"):
                     bm_prof = (prof if prof["lang"] == "BM" and tail_word == word
                                else LEXICON.get_phonetic_profile(raw, force_lang="BM", cache=False))
                     if bm_prof["units"]:
                         _add_to_index(bm, raw, bm_prof, shared)
+                        if raw not in near_bm_done:
+                            near_bm_done.add(raw)
+                            _add_near_entry(near_bm, _make_near_entry(
+                                raw, bm_prof["units"], bm_prof["syllables"], "BM"))
         except BaseException:
             if gc_was_on:
                 gc.enable()
@@ -1605,8 +1897,12 @@ def _get_rhyme_index() -> dict:
         if gc_was_on:
             gc.freeze()  # the finished index is long-lived: never rescan it
             gc.enable()
+        for table in (near, near_bm):
+            for family in table.values():
+                for group in family.values():
+                    group.sort(key=lambda item: (len(item[0]), item[0]))
         _RESULT_CACHE.clear()
-        _INDEX.update(sig=sig, bm=bm, custom=custom)
+        _INDEX.update(sig=sig, bm=bm, custom=custom, near=near, near_bm=near_bm)
     return _INDEX
 
 
@@ -1654,21 +1950,26 @@ def _search_rhymes(word: str, limit: int) -> dict:
     target_prof = LEXICON.get_phonetic_profile(clean)
     norm = target_prof["norm"]
     if (target_prof["lang"] != "BM" and not target_prof["pron_override"]
-            and HAS_CMU_SOURCE and _looks_malay(norm)):
+            and HAS_CMU_SOURCE and norm not in LEXICON.active_pack_words
+            and _looks_malay(norm)):
         target_prof = LEXICON.get_phonetic_profile(clean, force_lang="BM")
     is_bm = target_prof["lang"] == "BM"
     t_phones = _strip_stress(target_prof["phones"])
 
     target_parts: list[str] = []
+    target_part_units: dict[str, list[dict]] = {}
     if target_prof["phones"]:
         p0 = _rhyming_part(target_prof["phones"])
         if p0:
             target_parts.append(p0)
+            target_part_units[p0] = target_prof["units"]
     if not is_bm and not target_prof["pron_override"]:
         for pr in _all_cmu_pronunciations(norm):
             p_cmu = _rhyming_part(pr)
             if p_cmu and p_cmu not in target_parts:
                 target_parts.append(p_cmu)
+            if p_cmu and p_cmu not in target_part_units:
+                target_part_units[p_cmu] = extract_syllable_units(list(pr))
 
     target_tails = [tuple(p.split()) for p in target_parts]
 
@@ -1705,9 +2006,17 @@ def _search_rhymes(word: str, limit: int) -> dict:
                                              + _all_cmu_pronunciations(cand))
                                if pr and _rhyming_part(pr) == part), ())
                 shared = _shared_suffix_len(t_phones, _strip_stress(phones))
-                found[cand] = (-shared, abs(syls - target_prof["syllables"]), cand, syls)
-        perfect_en = [f"{c}{_syl_badge(v[3])}"
-                      for c, v in sorted(found.items(), key=lambda kv: kv[1][:3])][:limit]
+                base_units = target_part_units.get(part) or target_prof["units"]
+                found[cand] = (-shared, abs(syls - target_prof["syllables"]), cand, syls,
+                               phones, base_units)
+        perfect_en: list[str] = []
+        for c, v in sorted(found.items(), key=lambda kv: kv[1][:3])[:limit]:
+            cand_units = extract_syllable_units(list(v[4])) if v[4] else []
+            if not cand_units:
+                cand_units = LEXICON.get_phonetic_profile(c).get("units") or []
+            pct = (_rhyme_pct(score_rhyme_pair(v[5], cand_units)[0], floor=90)
+                   if cand_units else 0)
+            perfect_en.append(f"{c}{_syl_badge(v[3])} [{pct}%]")
 
     index = _get_rhyme_index()
 
@@ -1737,36 +2046,27 @@ def _search_rhymes(word: str, limit: int) -> dict:
         return heapq.nsmallest(
             limit, (m for m in matches if m[0] == best and best >= 2), key=lambda m: (m[1], m[2]))
 
-    perfect_bm = [f"{c}{_syl_badge(n)}" for _, _, c, n in _top(bm_matches)]
+    perfect_bm = [
+        f"{c}{_syl_badge(n)} [{_exact_rhyme_pct(target_prof['units'], c, 'BM')}%]"
+        for _, _, c, n in _top(bm_matches)
+    ]
 
-    perfect_custom: list[str] = [
-        f"{c} [slang]" if c in LEXICON.custom_slang else c for _, _, c, _n in _top(custom_matches)]
+    perfect_custom: list[str] = []
+    for _tier, _close, c, _n in _top(custom_matches):
+        pct = _exact_rhyme_pct(target_prof["units"], c)
+        label = f"{c} [{pct}%]"
+        if c in LEXICON.custom_slang:
+            label = f"{c} [slang] [{pct}%]"
+        perfect_custom.append(label)
 
-    slant: list[str] = []
-    if not (perfect_en or perfect_bm or perfect_custom):
-        near: dict[str, tuple] = {}
-        for _tier, key, cand, _n in bm_matches + custom_matches:
-            near[cand] = (0, key, cand, f"{cand} [near]")
-        if not is_bm:
-            t_tail = _rhyme_tail_units(target_prof["units"])
-            groups = _VOWEL_TAIL_INDEX.get(tuple(u["vowel"] for u in t_tail), {})
-            best_groups = []
-            for codas, words in groups.items():
-                conf = sum(consonant_seq_similarity(a["coda"], b)
-                           for a, b in zip(t_tail, codas)) / len(t_tail)
-                if conf >= 0.5:
-                    best_groups.append((conf, words))
-            best_groups.sort(key=lambda g: -g[0])
-            added = 0
-            for conf, words in best_groups:
-                pct = int(65 + 34 * min(conf, 1.0))
-                for cand in heapq.nsmallest(NEAREST_LIMIT + 1, words, key=lambda w: (len(w), w)):
-                    if cand != norm and cand not in near:
-                        near[cand] = (1, (-conf, len(cand)), cand, f"{cand} [{pct}%]")
-                        added += 1
-                if added >= NEAREST_LIMIT * 2 and conf < best_groups[0][0]:
-                    break
-        slant = [v[3] for v in sorted(near.values(), key=lambda v: v[:3])][:min(limit, NEAREST_LIMIT)]
+    # Slant is always available now: exact rhymes no longer hide the near ones,
+    # and downloaded packs contribute candidates alongside the local dictionary.
+    exact_words: set[str] = set()
+    for entry in perfect_en + perfect_bm + perfect_custom:
+        base = _base_rhyme_word(entry).lower()
+        if base:
+            exact_words.add(base)
+    slant = _find_slant_rhymes(target_prof, is_bm, exact_words, limit)
 
     return {
         "word": clean,
@@ -1777,6 +2077,288 @@ def _search_rhymes(word: str, limit: int) -> dict:
         "perfect_bm": perfect_bm[:limit],
         "perfect_custom": perfect_custom[:limit],
         "slant": slant,
+    }
+
+
+# =====================================================================
+# LYRIC CLEAN-UP
+# =====================================================================
+
+_SECTION_WORD_RE = re.compile(
+    r"^(intro|verse|pre[\s-]?chorus|chorus|hook|post[\s-]?chorus|bridge|"
+    r"refrain|interlude|break|drop|instrumental|skit|outro)(?:[\s-]*(\d{1,2}))?$",
+    re.IGNORECASE,
+)
+_SECTION_NAME_MAP = {
+    "intro": "Intro",
+    "verse": "Verse",
+    "prechorus": "Pre-Chorus",
+    "chorus": "Chorus",
+    "hook": "Hook",
+    "postchorus": "Post-Chorus",
+    "bridge": "Bridge",
+    "refrain": "Refrain",
+    "interlude": "Interlude",
+    "break": "Break",
+    "drop": "Drop",
+    "instrumental": "Instrumental",
+    "skit": "Skit",
+    "outro": "Outro",
+}
+_PUNCT_MARKS_RE = re.compile(r"\.{2,}|…|(?<!\d)\.|\.(?!\d)")
+
+
+def _section_display_name(raw: str) -> str:
+    key = re.sub(r"[\s-]+", "", raw.lower())
+    return _SECTION_NAME_MAP.get(key, raw.strip().title())
+
+
+def _parse_section_header(line: str) -> dict | None:
+    """Return section-header metadata, or None for a normal lyric line.
+
+    Handles both [Verse 1] and bare Verse 1: forms, while explicitly ignoring
+    timestamp tags such as [00:12].
+    """
+    stripped = line.strip()
+    if not stripped:
+        return None
+    bracketed = stripped.startswith("[") and stripped.endswith("]")
+    inner = stripped[1:-1].strip() if bracketed else stripped
+    if bracketed and re.fullmatch(r"\d{1,2}:\d{2}(?:\.\d+)?", inner):
+        return None
+
+    candidate = inner.rstrip(":.-").strip()
+    m = _SECTION_WORD_RE.fullmatch(candidate)
+    if m:
+        name = _section_display_name(m.group(1))
+        num = int(m.group(2)) if m.group(2) else 0
+        label = f"{name} {num}" if num else name
+        return {"kind": "bracket" if bracketed else "bare", "label": label, "simple": True}
+
+    if bracketed and re.match(
+        r"^(intro|verse|pre[\s-]?chorus|chorus|hook|post[\s-]?chorus|bridge|"
+        r"refrain|interlude|break|drop|instrumental|skit|outro)\b",
+        inner,
+        re.IGNORECASE,
+    ):
+        return {"kind": "complex", "label": None, "simple": False}
+    return None
+
+
+def _clean_punctuation(line: str) -> tuple[str, int]:
+    removed = line.count(",") + line.count(";") + len(_PUNCT_MARKS_RE.findall(line))
+    # Keep thousand separators from turning 1,000 into 1 000.
+    line = re.sub(r"(?<=\d),(?=\d)", "", line)
+    line = line.replace(",", " ").replace(";", " ")
+    line = _PUNCT_MARKS_RE.sub(" ", line)
+    return line, removed
+
+
+def _tidy_line_spaces(line: str) -> str:
+    line = re.sub(r"[ \t]+", " ", line).strip()
+    return re.sub(r"\s+([!?])", r"\1", line)
+
+
+def _capitalize_lyric_line(line: str) -> tuple[str, bool]:
+    m = re.search(r"[^\W\d_]", line)
+    if not m:
+        return line, False
+    i = m.start()
+    if line[i].islower():
+        return line[:i] + line[i].upper() + line[i + 1:], True
+    return line, False
+
+
+def _split_lyric_blocks(lines: list[str]) -> list[list[str]]:
+    blocks: list[list[str]] = []
+    current: list[str] = []
+    for line in lines:
+        if line.strip():
+            current.append(line.strip())
+        elif current:
+            blocks.append(current)
+            current = []
+    if current:
+        blocks.append(current)
+    return blocks
+
+
+def _chunk_long_block(block: list[str]) -> list[list[str]]:
+    if len(block) <= 8:
+        return [block]
+    chunks = [block[i:i + 8] for i in range(0, len(block), 8)]
+    if len(chunks) > 1 and len(chunks[-1]) < 4:
+        tail = chunks.pop()
+        chunks[-1].extend(tail)
+    return chunks
+
+
+def _section_fingerprint(block: list[str]) -> str:
+    words = re.findall(r"[a-z0-9']+", " ".join(block).lower())
+    return " ".join(words)
+
+
+def _plan_section_labels(blocks: list[list[str]]) -> list[str]:
+    n = len(blocks)
+    if n <= 1:
+        return ["Verse 1"] if n else []
+
+    fingerprints = [_section_fingerprint(b) for b in blocks]
+    counts: dict[str, int] = defaultdict(int)
+    for fp in fingerprints:
+        if fp:
+            counts[fp] += 1
+    repeated = {fp for fp, count in counts.items() if count >= 2}
+
+    if repeated:
+        labels: list[str] = []
+        verse_no = 1
+        for fp in fingerprints:
+            if fp in repeated:
+                labels.append("Chorus")
+            else:
+                labels.append(f"Verse {verse_no}")
+                verse_no += 1
+        return labels
+
+    if n == 2:
+        return ["Verse 1", "Chorus"]
+
+    labels = ["Verse 1", "Chorus"]
+    verse_no = 2
+    for i in range(2, n):
+        if i == n - 1 and n >= 4:
+            labels.append("Outro" if n >= 5 else "Bridge")
+        else:
+            labels.append(f"Verse {verse_no}")
+            verse_no += 1
+    return labels
+
+
+def clean_up_lyrics(
+    text: str,
+    *,
+    capitalize_lines: bool = True,
+    remove_punctuation: bool = True,
+    add_song_structure: bool = True,
+    tidy_spacing: bool = True,
+) -> dict:
+    """Format a messy lyric draft without changing its words.
+
+    The cleaner is intentionally deterministic: it capitalises line starts,
+    removes commas / full stops (but keeps ? and !), tidies spacing, normalises
+    simple section headers, and adds a practical verse/chorus map when the
+    draft has no structure at all.
+
+    Returns a dict with the cleaned text, change counters, and a stats map so
+    the UI can show a useful preview before the writer applies it.
+    """
+    stats = {
+        "capitalized": 0,
+        "punctuation_removed": 0,
+        "headers_normalized": 0,
+        "sections_added": 0,
+        "blank_lines_removed": 0,
+        "lines": 0,
+    }
+
+    raw_lines = text.splitlines()
+    has_structure = False
+    cleaned: list[str] = []
+
+    for raw in raw_lines:
+        stripped = raw.strip()
+        if not stripped:
+            cleaned.append("")
+            continue
+
+        meta = _parse_section_header(stripped)
+        if meta is not None:
+            has_structure = True
+
+        if meta is not None and meta["simple"] and add_song_structure:
+            normalised = f"[{meta['label']}]"
+            if normalised != stripped:
+                stats["headers_normalized"] += 1
+            cleaned.append(normalised)
+            continue
+
+        if meta is not None:
+            cleaned.append(_tidy_line_spaces(stripped))
+            continue
+
+        line = stripped
+        if remove_punctuation:
+            line, removed = _clean_punctuation(line)
+            stats["punctuation_removed"] += removed
+        line = _tidy_line_spaces(line)
+        if capitalize_lines:
+            line, changed = _capitalize_lyric_line(line)
+            if changed:
+                stats["capitalized"] += 1
+        cleaned.append(line)
+
+    stats["lines"] = sum(1 for line in cleaned if line.strip())
+    had_blank_separator = any(not line.strip() for line in cleaned)
+
+    if tidy_spacing:
+        collapsed: list[str] = []
+        blank_pending = False
+        for line in cleaned:
+            if line.strip():
+                if blank_pending and collapsed:
+                    collapsed.append("")
+                collapsed.append(line.rstrip())
+                blank_pending = False
+            else:
+                blank_pending = True
+        cleaned = collapsed
+    else:
+        cleaned = [line.rstrip() for line in cleaned]
+
+    if add_song_structure and not has_structure:
+        blocks = _split_lyric_blocks(cleaned)
+        if blocks and len(blocks) == 1:
+            blocks = _chunk_long_block(blocks[0])
+        elif blocks and had_blank_separator and all(len(b) == 1 for b in blocks):
+            # Double-spaced drafts are still one lyric, not ten sections.
+            blocks = _chunk_long_block([line for block in blocks for line in block])
+        labels = _plan_section_labels(blocks)
+        if blocks and labels:
+            rebuilt: list[str] = []
+            for label, block in zip(labels, blocks):
+                if rebuilt:
+                    rebuilt.append("")
+                rebuilt.append(f"[{label}]")
+                rebuilt.extend(block)
+            cleaned = rebuilt
+            stats["sections_added"] = len(labels)
+    elif add_song_structure and tidy_spacing:
+        # Existing headers: keep one breathing line before each new section.
+        rebuilt = []
+        for line in cleaned:
+            if _parse_section_header(line) is not None and rebuilt and rebuilt[-1] != "":
+                rebuilt.append("")
+            rebuilt.append(line)
+        cleaned = rebuilt
+
+    before_blank = sum(1 for line in raw_lines if not line.strip())
+    after_blank = sum(1 for line in cleaned if not line.strip())
+    stats["blank_lines_removed"] = max(0, before_blank - after_blank)
+
+    cleaned_text = "\n".join(cleaned).strip()
+    stats["total"] = (
+        stats["capitalized"]
+        + stats["punctuation_removed"]
+        + stats["headers_normalized"]
+        + stats["sections_added"]
+        + stats["blank_lines_removed"]
+    )
+    return {
+        "text": cleaned_text,
+        "changed": cleaned_text != text.rstrip("\r\n"),
+        "stats": stats,
+        "structure_added": stats["sections_added"] > 0,
     }
 
 
@@ -1812,8 +2394,15 @@ def rate_lyrics_comprehensive(
             "overall": 0,
             "tier": "NEED 4+ UNIQUE BARS" if bars else "EMPTY SHEET",
             "color": "#A1A1AA",
-            "metrics": {"bars": bars, "words": word_count, "multie_chains": 0},
+            "metrics": {
+                "bars": bars,
+                "words": word_count,
+                "multie_chains": 0,
+                "near_rhymes": 0,
+                "near_avg": 0,
+            },
             "breakdown": {"multies": 0, "flow": 0, "structure": 0, "vocab": 0},
+            "near": {"count": 0, "avg_confidence": 0, "categories": {}, "pairs": []},
             "highlights": [],
             "tips": [f"Write at least {MIN_UNIQUE_BARS} different bars to get a score."],
         }
@@ -1860,6 +2449,62 @@ def rate_lyrics_comprehensive(
     content = [t["norm"] for t in unique_tokens if not t["is_stopword"]]
     vocab_score = int(round(len(set(content)) / len(content) * 100.0)) if content else 0
 
+    # Near-rhyme detail for the scorecard. Scan line endings independently of
+    # the exact-rhyme buckets so stress-based slants such as enemies / memories
+    # still show up here. Each line ending contributes only its strongest pair.
+    try:
+        near_window = max(1, int(rhyme_window))
+    except (TypeError, ValueError):
+        near_window = 4
+    end_by_line: dict[tuple[int, int], list[dict]] = defaultdict(list)
+    for t in tokens:
+        if t["is_line_end"] and not t["is_stopword"]:
+            end_by_line[(t["section"], t["line"])].append(t)
+
+    best_near_by_token: dict[int, tuple[float, str, dict]] = {}
+    for t in unique_tokens:
+        if not t["is_line_end"] or t["is_stopword"]:
+            continue
+        best = None
+        for line_no in range(t["line"] - near_window, t["line"] + near_window + 1):
+            if line_no == t["line"]:
+                continue
+            for other in end_by_line.get((t["section"], line_no), ()):
+                conf, cat = _near_pair_rhyme_strength(t, other)
+                if conf <= 0.0:
+                    continue
+                if best is None or conf > best[0]:
+                    best = (conf, cat, other)
+        if best is not None:
+            best_near_by_token[t["idx"]] = best
+
+    near_pairs: list[dict] = []
+    seen_near_pairs: set[tuple] = set()
+    for t in unique_tokens:
+        best = best_near_by_token.get(t["idx"])
+        if not best:
+            continue
+        conf, cat, partner = best
+        pair_key = tuple(sorted((t["idx"], partner["idx"])))
+        if pair_key in seen_near_pairs:
+            continue
+        seen_near_pairs.add(pair_key)
+        near_pairs.append({
+            "word": t["word"],
+            "partner": partner["word"],
+            "confidence": int(round(float(conf))),
+            "category": cat,
+            "line": t["line"],
+            "partner_line": partner["line"],
+        })
+
+    near_pairs.sort(key=lambda p: (-p["confidence"], p["line"]))
+    near_count = len(near_pairs)
+    near_avg = int(round(sum(p["confidence"] for p in near_pairs) / near_count)) if near_count else 0
+    near_categories: dict[str, int] = {}
+    for p in near_pairs:
+        near_categories[p["category"]] = near_categories.get(p["category"], 0) + 1
+
     overall = int(round(
         0.40 * multies_score
         + 0.27 * flow_score
@@ -1896,8 +2541,16 @@ def rate_lyrics_comprehensive(
         tips.append("Syllable counts vary a lot between neighbouring bars. Check them against your beat.")
     if vocab_score < 60:
         tips.append("Many content words repeat. Try swapping some of them.")
+    near_noun = "near rhyme" if near_count == 1 else "near rhymes"
+    if near_count == 0:
+        tips.append("No near rhymes yet — try a slant like 'enemies' ↔ 'friendly' to add bounce.")
+    elif near_avg < 78:
+        tips.append(f"{near_count} {near_noun} found ({near_avg}% avg). Tighten the vowel or coda for more snap.")
     if not tips:
-        tips.append("The technical checks look good. This score cannot judge delivery or vocal tone.")
+        if near_count:
+            tips.append(f"✨ {near_count} {near_noun} at {near_avg}% average — your slant game is working.")
+        else:
+            tips.append("The technical checks look good. This score cannot judge delivery or vocal tone.")
 
     return {
         "overall": overall,
@@ -1907,12 +2560,20 @@ def rate_lyrics_comprehensive(
             "bars": bars,
             "words": word_count,
             "multie_chains": len(internal),
+            "near_rhymes": near_count,
+            "near_avg": near_avg,
         },
         "breakdown": {
             "multies": multies_score,
             "flow": flow_score,
             "structure": structure_score,
             "vocab": vocab_score,
+        },
+        "near": {
+            "count": near_count,
+            "avg_confidence": near_avg,
+            "categories": near_categories,
+            "pairs": near_pairs[:10],
         },
         "highlights": highlights[:12],
         "tips": tips,

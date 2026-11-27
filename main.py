@@ -17,7 +17,10 @@ import urllib.request
 import zipfile
 from pathlib import Path
 from datetime import datetime
-from PySide6.QtCore import Qt, QTimer, QRect, QRectF, QPointF, QSize, QUrl, QThread, QEvent, Signal
+from PySide6.QtCore import (
+    Qt, QTimer, QRect, QRectF, QPointF, QSize, QUrl, QThread, QEvent, Signal,
+    QPropertyAnimation, QEasingCurve,
+)
 from PySide6.QtGui import (
     QColor, QPainter, QPen, QBrush, QLinearGradient, QRadialGradient, QPainterPath,
     QPixmap, QIcon, QTextFormat, QTextCharFormat,
@@ -35,12 +38,12 @@ from PySide6.QtWidgets import (
 
 from lyric_engine import (
     LEXICON, ONLINE_CURATED_CATALOG, RHYME_PALETTE, ensure_offline_corpora,
-    analyze_lyrics, rate_lyrics_comprehensive, find_rhymes_for_word,
+    analyze_lyrics, rate_lyrics_comprehensive, find_rhymes_for_word, clean_up_lyrics,
     fetch_url_text, parse_wordlist_content, search_github_wordlists,
     fetch_repo_wordlist_files, set_active_profile_key, 
     derive_profile_crypto_key, write_encrypted_profile_json,
     read_encrypted_profile_json, check_rhyme_pair, run_songwriting_coach,
-    warm_up_rhyme_index,
+    warm_up_rhyme_index, is_rhyme_index_ready,
 )
 
 def resource_path(relative_path: str) -> Path:
@@ -364,6 +367,20 @@ QPushButton:disabled {{
     background-color: {bg_base};
     color: #636370;
     border-color: {border};
+}}
+QPushButton#CleanLyricsBtn {{
+    background-color: {bg_elevated};
+    border: 1px solid {accent_border};
+    color: {accent_hover};
+    border-radius: 6px;
+    padding: 2px 8px;
+    font-size: 10px;
+    font-weight: 700;
+}}
+QPushButton#CleanLyricsBtn:hover {{
+    background-color: {accent_soft};
+    border-color: {accent};
+    color: #FFFFFF;
 }}
 QPushButton#PrimaryBtn {{
             background-color: {accent};
@@ -863,147 +880,348 @@ class RatingRingWidget(QWidget):
 
 
 class LyricRatingDialog(QDialog):
-    """Interactive Scorecard modal with animated gauge, category bars, and click-to-jump line highlights."""
+    """Interactive Scorecard modal with animated gauge, near-rhyme card, and click-to-jump highlights."""
+
     def __init__(self, parent, rating_data: dict, on_jump_line_callback):
         super().__init__(parent)
         self.data = rating_data
         self.on_jump_line = on_jump_line_callback
-        self.setWindowTitle("nocturne | pen meter results")
+        self._bar_anims = []
+        self.setWindowTitle("nocturne | pen meter scorecard")
         self.setWindowIcon(get_nocturne_app_icon())
-        self.resize(640, 660)
+        self.resize(780, 690)
+        self.setMinimumSize(700, 620)
         self.build_ui()
 
+    @staticmethod
+    def _vibe_line(score: int) -> str:
+        if score >= 85:
+            return '🔥 Elite pen. The booth is waiting.'
+        if score >= 72:
+            return '⚡ Sharp and confident. Keep the pressure on.'
+        if score >= 55:
+            return '🎧 Solid pocket. Polish the edges and level up.'
+        return '🌱 Raw draft energy. Build the next bar.'
+
+    def _make_stat_chip(self, icon: str, value, label: str, color: str, t: dict) -> QFrame:
+        chip = QFrame()
+        chip.setObjectName('StatChip')
+        chip.setStyleSheet(f'''
+            QFrame#StatChip {{
+                background-color: {t['bg_base']};
+                border: 1px solid {t['border']};
+                border-radius: 8px;
+            }}
+            QLabel {{
+                background: transparent;
+                border: none;
+            }}
+        ''')
+        lay = QVBoxLayout(chip)
+        lay.setContentsMargins(8, 4, 8, 4)
+        lay.setSpacing(0)
+        val = QLabel(f'{icon} {value}')
+        val.setStyleSheet(f'color: {color}; font-size: 13px; font-weight: 800;')
+        cap = QLabel(label.upper())
+        cap.setStyleSheet('color: #A1A1AA; font-size: 8px; font-weight: 700; letter-spacing: 0.6px;')
+        lay.addWidget(val)
+        lay.addWidget(cap)
+        chip.setMinimumWidth(72)
+        return chip
+
     def build_ui(self):
+        theme_id = getattr(self.parent(), 'studio_settings', {}).get('theme', 'purple')
+        t = get_theme_palette(theme_id)
+        self.setStyleSheet(f"QDialog {{ background-color: {t['bg_base']}; }}")
+
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(20, 20, 20, 20)
-        layout.setSpacing(14)
+        layout.setContentsMargins(20, 18, 20, 18)
+        layout.setSpacing(10)
 
         hero = QFrame()
-        hero.setObjectName("PanelCard")
+        hero.setObjectName('RatingHero')
+        hero.setStyleSheet(f'''
+            QFrame#RatingHero {{
+                background: qlineargradient(x1: 0, y1: 0, x2: 1, y2: 1,
+                    stop: 0 {t['bg_surface']}, stop: 1 {t['accent_soft']});
+                border: 1px solid {self.data['color']};
+                border-radius: 12px;
+            }}
+            QLabel {{
+                background: transparent;
+                border: none;
+            }}
+        ''')
         hero_lay = QHBoxLayout(hero)
         hero_lay.setContentsMargins(18, 14, 18, 14)
         hero_lay.setSpacing(18)
 
-        self.gauge = RatingRingWidget(size=108)
-        self.gauge.set_score(self.data["overall"], self.data["color"], animate=True)
+        self.gauge = RatingRingWidget(size=112)
+        self.gauge.set_score(self.data['overall'], self.data['color'], animate=True)
         hero_lay.addWidget(self.gauge)
 
         meta_col = QVBoxLayout()
-        meta_col.setSpacing(6)
-        tier_lbl = QLabel(self.data["tier"])
+        meta_col.setSpacing(5)
+
+        tier_lbl = QLabel(self.data['tier'])
         tier_lbl.setTextFormat(Qt.PlainText)
-        tier_lbl.setStyleSheet(f"color: {self.data['color']}; font-size: 18px; font-weight: 800; letter-spacing: 0.5px;")
+        tier_lbl.setStyleSheet(
+            f"color: {self.data['color']}; font-size: 18px; font-weight: 800; letter-spacing: 0.5px;"
+        )
         meta_col.addWidget(tier_lbl)
 
-        m = self.data["metrics"]
-        stats_line = QLabel(
-            f"{m['bars']} Bars  •  {m['words']} Words  •  {m['multie_chains']} Internal Rhymes"
-        )
-        stats_line.setTextFormat(Qt.PlainText)
-        stats_line.setStyleSheet("color: #E4E4E7; font-size: 12px; font-weight: 600;")
-        meta_col.addWidget(stats_line)
+        vibe = QLabel(self._vibe_line(self.data['overall']))
+        vibe.setTextFormat(Qt.PlainText)
+        vibe.setStyleSheet('color: #E4E4E7; font-size: 11px; font-weight: 600;')
+        meta_col.addWidget(vibe)
 
-        sub_note = QLabel("Technical score: Rhyme Density, Cadence Pocket, Song Structure & Vocabulary.")
-        sub_note.setWordWrap(True)
-        sub_note.setStyleSheet("color: #A1A1AA; font-size: 11px;")
-        meta_col.addWidget(sub_note)
+        m = self.data['metrics']
+        near = self.data.get('near') or {}
+        chip_row = QHBoxLayout()
+        chip_row.setSpacing(6)
+        chip_specs = [
+            ('🎤', m['bars'], 'Bars', t['accent']),
+            ('📝', m['words'], 'Words', '#38BDF8'),
+            ('🔗', m['multie_chains'], 'Internal', '#34D399'),
+            ('✨', m.get('near_rhymes', near.get('count', 0)), 'Near', '#F472B6'),
+        ]
+        for icon, value, label, color in chip_specs:
+            chip_row.addWidget(self._make_stat_chip(icon, value, label, color, t))
+        meta_col.addLayout(chip_row)
         hero_lay.addLayout(meta_col, 1)
-
         layout.addWidget(hero)
 
-        layout.addWidget(QLabel("TECHNICAL BREAKDOWN", objectName="SectionHeader"))
+        mid = QHBoxLayout()
+        mid.setSpacing(12)
+
+        left_col = QVBoxLayout()
+        left_col.setSpacing(6)
+        left_hdr = QLabel('TECHNICAL BREAKDOWN', objectName='SectionHeader')
+        left_hdr.setFixedHeight(16)
+        left_col.addWidget(left_hdr)
+
         bars_card = QFrame()
-        bars_card.setObjectName("PanelCard")
+        bars_card.setObjectName('PanelCard')
+        bars_card.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         bars_grid = QGridLayout(bars_card)
         bars_grid.setContentsMargins(14, 12, 14, 12)
-        bars_grid.setSpacing(10)
+        bars_grid.setSpacing(9)
 
-        theme_id = getattr(self.parent(), "studio_settings", {}).get("theme", "purple")
-        t = get_theme_palette(theme_id)
-
-        bd = self.data["breakdown"]
+        bd = self.data['breakdown']
         categories = [
-            ("🔥 Rhyme Density (40%)", bd["multies"], t["accent"]),
-            ("🌊 Flow & Cadence Pocket (27%)", bd["flow"], "#38BDF8"),
-            ("🏗 Song Structure & Sections (20%)", bd["structure"], "#34D399"),
-            ("🧠 Vocabulary & Bilingual Mix (13%)", bd["vocab"], "#FBBF24"),
+            ('🔥 Rhyme Density (40%)', bd['multies'], t['accent']),
+            ('🌊 Flow & Cadence (27%)', bd['flow'], '#38BDF8'),
+            ('🏗 Structure (20%)', bd['structure'], '#34D399'),
+            ('🧠 Vocabulary (13%)', bd['vocab'], '#FBBF24'),
         ]
         for row_idx, (label_txt, val, col_hex) in enumerate(categories):
             lbl = QLabel(label_txt)
-            lbl.setStyleSheet("color: #F4F4F5; font-size: 12px; font-weight: 600;")
+            lbl.setStyleSheet('color: #F4F4F5; font-size: 11px; font-weight: 600;')
+
             pbar = QProgressBar()
             pbar.setRange(0, 100)
-            pbar.setValue(val)
+            pbar.setValue(0)
             pbar.setTextVisible(False)
             pbar.setFixedHeight(8)
-            pbar.setStyleSheet(f"""
-                QProgressBar {{ background-color: {t["bg_base"]}; border: 1px solid {t["border"]}; border-radius: 4px; }}
-                QProgressBar::chunk {{ background-color: {col_hex}; border-radius: 3px; }}
-            """)
-            pct = QLabel(f"{val}%")
-            pct.setFixedWidth(42)
+            pbar.setStyleSheet(f'''
+                QProgressBar {{
+                    background-color: {t['bg_base']};
+                    border: 1px solid {t['border']};
+                    border-radius: 4px;
+                }}
+                QProgressBar::chunk {{
+                    background-color: {col_hex};
+                    border-radius: 3px;
+                }}
+            ''')
+
+            anim = QPropertyAnimation(pbar, b'value', self)
+            anim.setDuration(650 + row_idx * 90)
+            anim.setStartValue(0)
+            anim.setEndValue(val)
+            anim.setEasingCurve(QEasingCurve.OutCubic)
+            self._bar_anims.append(anim)
+            anim.finished.connect(lambda p=pbar, v=val: p.setValue(v))
+            anim.start()
+
+            pct = QLabel(f'{val}%')
+            pct.setFixedWidth(40)
             pct.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
-            pct.setStyleSheet(f"color: {col_hex}; font-family: 'Consolas'; font-weight: 700; font-size: 12px;")
+            pct.setStyleSheet(
+                f"color: {col_hex}; font-family: 'Consolas'; font-weight: 700; font-size: 11px;"
+            )
 
             bars_grid.addWidget(lbl, row_idx, 0)
             bars_grid.addWidget(pbar, row_idx, 1)
             bars_grid.addWidget(pct, row_idx, 2)
 
-        layout.addWidget(bars_card)
+        left_col.addWidget(bars_card)
+        mid.addLayout(left_col, 3)
 
-        layout.addWidget(QLabel("DETECTED HIGHLIGHTS (CLICK ANY LINE TO JUMP IN EDITOR)", objectName="SectionHeader"))
-        self.hl_list = QListWidget()
-        self.hl_list.setMinimumHeight(115)
-        self.hl_list.setMaximumHeight(145)
-        self.hl_list.setStyleSheet(f"""
+        right_col = QVBoxLayout()
+        right_col.setSpacing(6)
+        right_hdr = QLabel('✨ NEAR RHYME SPICE', objectName='SectionHeader')
+        right_hdr.setFixedHeight(16)
+        right_col.addWidget(right_hdr)
+
+        near_card = QFrame()
+        near_card.setObjectName('PanelCard')
+        near_card.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        near_lay = QVBoxLayout(near_card)
+        near_lay.setContentsMargins(12, 10, 12, 8)
+        near_lay.setSpacing(5)
+
+        near_top = QHBoxLayout()
+        near_top.setSpacing(10)
+        near_count = near.get('count', m.get('near_rhymes', 0))
+        near_avg = near.get('avg_confidence', m.get('near_avg', 0))
+        near_gauge = RatingRingWidget(size=74)
+        near_gauge.set_score(near_avg, '#F472B6', animate=True)
+        near_top.addWidget(near_gauge)
+
+        near_meta = QVBoxLayout()
+        near_meta.setSpacing(1)
+        near_count_lbl = QLabel(f"{near_count} near rhyme{'s' if near_count != 1 else ''}")
+        near_count_lbl.setStyleSheet('color: #F9A8D4; font-size: 13px; font-weight: 800;')
+        near_meta.addWidget(near_count_lbl)
+        avg_txt = f'{near_avg}% avg confidence' if near_count else 'no slant pairs yet'
+        near_avg_lbl = QLabel(avg_txt)
+        near_avg_lbl.setStyleSheet('color: #A1A1AA; font-size: 10px;')
+        near_meta.addWidget(near_avg_lbl)
+        cats = near.get('categories') or {}
+        cat_txt = ' · '.join(f'{name} {count}' for name, count in sorted(cats.items()))
+        near_cats_lbl = QLabel(cat_txt or 'Try a slant like enemies ↔ friendly')
+        near_cats_lbl.setWordWrap(True)
+        near_cats_lbl.setStyleSheet('color: #71717A; font-size: 9px;')
+        near_meta.addWidget(near_cats_lbl)
+        near_top.addLayout(near_meta, 1)
+        near_lay.addLayout(near_top)
+
+        self.near_list = QListWidget()
+        self.near_list.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.near_list.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.near_list.setStyleSheet(f'''
+            QListWidget {{
+                background-color: {t['bg_base']};
+                border: 1px solid {t['border']};
+                border-radius: 7px;
+                padding: 2px;
+            }}
+            QListWidget::item {{
+                color: #F4F4F5;
+                padding: 4px 6px;
+                border-radius: 5px;
+                font-size: 10px;
+            }}
+            QListWidget::item:hover {{
+                background-color: {t['accent_soft']};
+                color: #FFFFFF;
+            }}
             QListWidget::item:selected {{
-                background-color: {t["accent"]};
-                color: {t["accent_fg"]};
+                background-color: {t['accent']};
+                color: {t['accent_fg']};
+            }}
+        ''')
+        pairs = near.get('pairs') or []
+        if pairs:
+            show = min(3, len(pairs))
+            self.near_list.setFixedHeight(show * 24 + 4)
+            for p in pairs[:show]:
+                item = QListWidgetItem(
+                    f"✨ {p['word']} ↔ {p['partner']}   ·   {p['confidence']}%"
+                )
+                item.setData(Qt.UserRole, p['line'])
+                item.setToolTip(
+                    f"L{p['line'] + 1:02d} ↔ L{p.get('partner_line', p['line']) + 1:02d} · {p['category']}"
+                )
+                self.near_list.addItem(item)
+        else:
+            self.near_list.setFixedHeight(26)
+            empty = QListWidgetItem('No near pairs — add a slant to unlock this card')
+            empty.setFlags(Qt.NoItemFlags)
+            self.near_list.addItem(empty)
+        self.near_list.itemClicked.connect(self.on_near_clicked)
+        near_lay.addWidget(self.near_list)
+        right_col.addWidget(near_card)
+        mid.addLayout(right_col, 2)
+
+        layout.addLayout(mid)
+
+        hl_hdr = QLabel('DETECTED HIGHLIGHTS · CLICK TO JUMP', objectName='SectionHeader')
+        hl_hdr.setFixedHeight(16)
+        layout.addWidget(hl_hdr)
+        self.hl_list = QListWidget()
+        self.hl_list.setMinimumHeight(88)
+        self.hl_list.setMaximumHeight(118)
+        self.hl_list.setWordWrap(True)
+        self.hl_list.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.hl_list.setStyleSheet(f'''
+            QListWidget {{
+                background-color: {t['bg_surface']};
+                border: 1px solid {t['border']};
+                border-radius: 8px;
+                padding: 4px;
+            }}
+            QListWidget::item {{
+                padding: 5px 7px;
+                border-bottom: 1px solid {t['border']};
+            }}
+            QListWidget::item:hover {{
+                background-color: {t['accent_soft']};
+            }}
+            QListWidget::item:selected {{
+                background-color: {t['accent']};
+                color: {t['accent_fg']};
                 font-weight: 700;
             }}
-        """)
-        if self.data["highlights"]:
-            for h in self.data["highlights"]:
+        ''')
+        if self.data['highlights']:
+            for h in self.data['highlights']:
                 item = QListWidgetItem(f"{h['badge']}   —   {h['detail']}")
-                item.setData(Qt.UserRole, h["line"])
+                item.setData(Qt.UserRole, h['line'])
                 self.hl_list.addItem(item)
         else:
-            self.hl_list.addItem(QListWidgetItem("No multi-syllabic chains or double entendres flagged yet."))
+            self.hl_list.addItem(QListWidgetItem(
+                'No internal rhyme chains flagged yet — check the near-rhyme card for slant spice.'
+            ))
         self.hl_list.itemClicked.connect(self.on_highlight_clicked)
         layout.addWidget(self.hl_list)
 
-        layout.addWidget(QLabel("STUDIO PEN COACH FEEDBACK", objectName="SectionHeader"))
+        tips_hdr = QLabel('PEN COACH FEEDBACK', objectName='SectionHeader')
+        tips_hdr.setFixedHeight(16)
+        layout.addWidget(tips_hdr)
         tips_box = QPlainTextEdit()
         tips_box.setReadOnly(True)
-        tips_box.setMinimumHeight(80)
-        tips_box.setMaximumHeight(100)
-        tips_box.setStyleSheet(f"""
+        tips_box.setMinimumHeight(64)
+        tips_box.setMaximumHeight(86)
+        tips_box.setStyleSheet(f'''
             QPlainTextEdit {{
-                background-color: {t["bg_surface"]};
-                border: 1px solid {t["accent_border"]};
+                background-color: {t['bg_surface']};
+                border: 1px solid {t['accent_border']};
                 border-radius: 6px;
                 color: #F4F4F5;
                 font-size: 12px;
                 padding: 8px;
             }}
-        """)
-        tips_box.setPlainText("\n".join(f"• {tip}" for tip in self.data["tips"]))
+        ''')
+        tips_box.setPlainText('\n'.join(f'• {tip}' for tip in self.data['tips']))
         layout.addWidget(tips_box)
 
-        btn_close = QPushButton("Back to Lyric Canvas")
-        btn_close.setObjectName("PrimaryBtn")
-        btn_close.setStyleSheet(f"""
+        btn_close = QPushButton('🎙 Back to Lyric Canvas')
+        btn_close.setObjectName('PrimaryBtn')
+        btn_close.setStyleSheet(f'''
             QPushButton {{
-                background-color: {t["accent"]};
-                border: 1px solid {t["accent_hover"]};
-                color: {t["accent_fg"]};
+                background-color: {t['accent']};
+                border: 1px solid {t['accent_hover']};
+                color: {t['accent_fg']};
                 font-weight: 700;
+                padding: 7px 14px;
             }}
             QPushButton:hover {{
-                background-color: {t["accent_hover"]};
-                color: {t["accent_fg"]};
+                background-color: {t['accent_hover']};
+                color: {t['accent_fg']};
             }}
-        """)
+        ''')
         btn_close.clicked.connect(self.accept)
         layout.addWidget(btn_close, alignment=Qt.AlignRight)
 
@@ -1011,6 +1229,316 @@ class LyricRatingDialog(QDialog):
         line_num = item.data(Qt.UserRole)
         if isinstance(line_num, int):
             self.on_jump_line(line_num)
+
+    def on_near_clicked(self, item: QListWidgetItem):
+        line_num = item.data(Qt.UserRole)
+        if isinstance(line_num, int):
+            self.on_jump_line(line_num)
+
+
+class LyricCleanupDialog(QDialog):
+    """Preview-first formatter for messy lyric drafts."""
+
+    def __init__(self, parent, text: str, theme_id: str = "purple"):
+        super().__init__(parent)
+        self.original_text = text
+        self.cleaned_text = text
+        self.setWindowTitle("Clean Up Lyrics // Nocturne")
+        self.setWindowIcon(get_nocturne_app_icon())
+        self.resize(900, 700)
+        self.setMinimumSize(740, 580)
+        self._build_ui(theme_id)
+        self._refresh_preview()
+
+    @staticmethod
+    def _plural(n: int, singular: str, plural: str | None = None) -> str:
+        word = singular if n == 1 else (plural or f"{singular}s")
+        return f"{n} {word}"
+
+    @staticmethod
+    def _line_count(text: str) -> int:
+        return len(text.splitlines()) if text else 0
+
+    def _build_ui(self, theme_id: str):
+        t = get_theme_palette(theme_id)
+        self.setStyleSheet(f"""
+            QDialog {{
+                background-color: {t["bg_base"]};
+            }}
+            QLabel#SectionHeader {{
+                background: transparent;
+            }}
+            QLabel#CleanupTitle {{
+                color: #F4F4F5;
+                font-size: 20px;
+                font-weight: 900;
+                background: transparent;
+            }}
+            QLabel#CleanupSubtitle {{
+                color: #A1A1AA;
+                font-size: 11px;
+                background: transparent;
+            }}
+            QFrame#CleanupHero {{
+                background-color: {t["bg_surface"]};
+                border: 1px solid {t["accent_border"]};
+                border-radius: 12px;
+            }}
+            QFrame#CleanupOptions {{
+                background-color: {t["bg_surface"]};
+                border: 1px solid {t["border"]};
+                border-radius: 10px;
+            }}
+            QLabel#CleanupSummary {{
+                color: {t["accent_hover"]};
+                font-size: 12px;
+                font-weight: 800;
+                background: transparent;
+            }}
+            QLabel#CleanupDetail {{
+                color: #A1A1AA;
+                font-size: 11px;
+                background: transparent;
+            }}
+            QLabel#CleanupPreviewHeader {{
+                color: #A1A1AA;
+                font-size: 10px;
+                font-weight: 800;
+                letter-spacing: 0.6px;
+                background: transparent;
+            }}
+            QLabel#CleanupNewHeader {{
+                color: {t["accent_hover"]};
+                font-size: 10px;
+                font-weight: 800;
+                letter-spacing: 0.6px;
+                background: transparent;
+            }}
+            QLabel#CleanupLineCount {{
+                color: #71717A;
+                font-size: 10px;
+                background: transparent;
+            }}
+            QCheckBox {{
+                color: #D4D4D8;
+                font-size: 11px;
+                spacing: 7px;
+                background: transparent;
+            }}
+            QCheckBox::indicator {{
+                width: 14px;
+                height: 14px;
+                border: 1px solid {t["border"]};
+                border-radius: 3px;
+                background-color: {t["bg_base"]};
+            }}
+            QCheckBox::indicator:checked {{
+                background-color: {t["accent"]};
+                border-color: {t["accent_hover"]};
+            }}
+            QPlainTextEdit#CleanupPreview {{
+                background-color: {t["bg_base"]};
+                border: 1px solid {t["border"]};
+                border-radius: 8px;
+                color: #E4E4E7;
+                padding: 8px;
+                selection-background-color: {t["accent"]};
+                selection-color: #FFFFFF;
+            }}
+            QPushButton {{
+                border-radius: 7px;
+                padding: 6px 14px;
+                font-size: 11px;
+                font-weight: 700;
+            }}
+        """)
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(18, 16, 18, 14)
+        layout.setSpacing(10)
+
+        hero = QFrame()
+        hero.setObjectName("CleanupHero")
+        hero_layout = QHBoxLayout(hero)
+        hero_layout.setContentsMargins(16, 12, 16, 12)
+        hero_layout.setSpacing(10)
+
+        title_col = QVBoxLayout()
+        title_col.setSpacing(3)
+        title = QLabel("🧹 Clean Up Lyrics")
+        title.setObjectName("CleanupTitle")
+        subtitle = QLabel("Fix capitals, punctuation & song structure — preview everything before it touches your draft.")
+        subtitle.setObjectName("CleanupSubtitle")
+        subtitle.setWordWrap(True)
+        title_col.addWidget(title)
+        title_col.addWidget(subtitle)
+        hero_layout.addLayout(title_col, 1)
+
+        self.summary_lbl = QLabel("READY")
+        self.summary_lbl.setObjectName("CleanupSummary")
+        self.summary_lbl.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+        hero_layout.addWidget(self.summary_lbl)
+
+        layout.addWidget(hero)
+
+        options = QFrame()
+        options.setObjectName("CleanupOptions")
+        options_layout = QVBoxLayout(options)
+        options_layout.setContentsMargins(14, 10, 14, 12)
+        options_layout.setSpacing(7)
+
+        options_title = QLabel("CLEAN-UP RULES", objectName="SectionHeader")
+        options_title.setFixedHeight(16)
+        options_layout.addWidget(options_title)
+
+        grid = QGridLayout()
+        grid.setContentsMargins(0, 0, 0, 0)
+        grid.setHorizontalSpacing(18)
+        grid.setVerticalSpacing(6)
+
+        self.cb_capitalize = QCheckBox("Capitalize line starts")
+        self.cb_capitalize.setChecked(True)
+        self.cb_capitalize.setToolTip("Capitalizes the first letter of each lyric line; the rest of the word stays untouched.")
+        self.cb_punctuation = QCheckBox("Remove commas and full stops")
+        self.cb_punctuation.setChecked(True)
+        self.cb_punctuation.setToolTip("Keeps apostrophes, question marks and exclamation marks.")
+        self.cb_structure = QCheckBox("Add / tidy song structure")
+        self.cb_structure.setChecked(True)
+        self.cb_structure.setToolTip("Adds [Verse] / [Chorus] headings when none exist, and tidies simple bare headers.")
+        self.cb_spacing = QCheckBox("Tidy spacing and blank lines")
+        self.cb_spacing.setChecked(True)
+        self.cb_spacing.setToolTip("Collapses extra blank lines and removes stray spaces.")
+
+        grid.addWidget(self.cb_capitalize, 0, 0)
+        grid.addWidget(self.cb_punctuation, 0, 1)
+        grid.addWidget(self.cb_structure, 1, 0)
+        grid.addWidget(self.cb_spacing, 1, 1)
+        options_layout.addLayout(grid)
+        layout.addWidget(options)
+
+        for cb in (self.cb_capitalize, self.cb_punctuation, self.cb_structure, self.cb_spacing):
+            cb.toggled.connect(self._refresh_preview)
+
+        preview_row = QHBoxLayout()
+        preview_row.setSpacing(10)
+
+        preview_row.addLayout(self._make_preview_column(
+            "ORIGINAL", self.original_text, is_cleaned=False
+        ), 1)
+        preview_row.addLayout(self._make_preview_column(
+            "CLEANED PREVIEW", self.original_text, is_cleaned=True
+        ), 1)
+        layout.addLayout(preview_row, 1)
+
+        footer = QHBoxLayout()
+        footer.setSpacing(8)
+
+        self.detail_lbl = QLabel("")
+        self.detail_lbl.setObjectName("CleanupDetail")
+        self.detail_lbl.setWordWrap(True)
+        footer.addWidget(self.detail_lbl, 1)
+
+        btn_cancel = QPushButton("Cancel")
+        btn_cancel.setCursor(Qt.PointingHandCursor)
+        btn_cancel.clicked.connect(self.reject)
+        footer.addWidget(btn_cancel)
+
+        self.btn_apply = QPushButton("✨ Apply Cleanup")
+        self.btn_apply.setObjectName("PrimaryBtn")
+        self.btn_apply.setCursor(Qt.PointingHandCursor)
+        self.btn_apply.setToolTip("Apply as one undoable edit. Press Ctrl+Z in the editor to revert.")
+        self.btn_apply.setDefault(True)
+        self.btn_apply.clicked.connect(self.accept)
+        footer.addWidget(self.btn_apply)
+
+        layout.addLayout(footer)
+
+    def _make_preview_column(self, title: str, text: str, is_cleaned: bool) -> QVBoxLayout:
+        col = QVBoxLayout()
+        col.setSpacing(4)
+
+        header = QHBoxLayout()
+        header.setContentsMargins(2, 0, 2, 0)
+        title_lbl = QLabel(title)
+        title_lbl.setObjectName("CleanupNewHeader" if is_cleaned else "CleanupPreviewHeader")
+        header.addWidget(title_lbl)
+        header.addStretch()
+
+        count_lbl = QLabel(f"{self._line_count(text)} LINES")
+        count_lbl.setObjectName("CleanupLineCount")
+        header.addWidget(count_lbl)
+        col.addLayout(header)
+
+        view = QPlainTextEdit()
+        view.setObjectName("CleanupPreview")
+        view.setReadOnly(True)
+        view.setLineWrapMode(QPlainTextEdit.WidgetWidth)
+        view.setFont(safe_qfont("Consolas", 10))
+        view.setPlaceholderText("Your lyrics will appear here…")
+        view.setPlainText(text)
+        col.addWidget(view, 1)
+
+        if is_cleaned:
+            self.preview_view = view
+            self.preview_count_lbl = count_lbl
+        else:
+            self.original_view = view
+        return col
+
+    def _refresh_preview(self):
+        any_rules = any((
+            self.cb_capitalize.isChecked(),
+            self.cb_punctuation.isChecked(),
+            self.cb_structure.isChecked(),
+            self.cb_spacing.isChecked(),
+        ))
+        if not any_rules:
+            self.cleaned_text = self.original_text
+            self.preview_view.setPlainText(self.cleaned_text)
+            self.preview_count_lbl.setText(f"{self._line_count(self.cleaned_text)} LINES")
+            self.summary_lbl.setText("No rules selected")
+            self.detail_lbl.setText("Tick a cleanup rule above to preview the changes.")
+            self.btn_apply.setEnabled(False)
+            return
+
+        result = clean_up_lyrics(
+            self.original_text,
+            capitalize_lines=self.cb_capitalize.isChecked(),
+            remove_punctuation=self.cb_punctuation.isChecked(),
+            add_song_structure=self.cb_structure.isChecked(),
+            tidy_spacing=self.cb_spacing.isChecked(),
+        )
+        self.cleaned_text = result["text"]
+        stats = result["stats"]
+        self.preview_view.setPlainText(self.cleaned_text)
+        self.preview_count_lbl.setText(f"{self._line_count(self.cleaned_text)} LINES")
+
+        parts = []
+        if stats["capitalized"]:
+            parts.append(self._plural(stats["capitalized"], "line start"))
+        if stats["punctuation_removed"]:
+            parts.append(self._plural(stats["punctuation_removed"], "punctuation mark"))
+        if stats["sections_added"]:
+            parts.append(self._plural(stats["sections_added"], "section header"))
+        if stats["headers_normalized"]:
+            parts.append(self._plural(stats["headers_normalized"], "header tidied"))
+        if stats["blank_lines_removed"]:
+            parts.append(self._plural(stats["blank_lines_removed"], "blank line"))
+
+        if result["changed"] and not self.cleaned_text.strip():
+            self.summary_lbl.setText("Nothing left to apply")
+            self.detail_lbl.setText("This draft was only punctuation or spacing.")
+            self.btn_apply.setEnabled(False)
+        elif result["changed"]:
+            fixes = stats["total"]
+            fix_word = "fix" if fixes == 1 else "fixes"
+            self.summary_lbl.setText(f"✨ {fixes} {fix_word} ready" if fixes else "✨ Ready to apply")
+            self.detail_lbl.setText(" · ".join(parts) if parts else "Formatting and spacing will be normalised.")
+            self.btn_apply.setEnabled(True)
+        else:
+            self.summary_lbl.setText("Nothing to fix ✨")
+            self.detail_lbl.setText("No changes needed with these rules.")
+            self.btn_apply.setEnabled(False)
 
 
 # =====================================================================
@@ -3428,6 +3956,7 @@ class LyricEditor(QPlainTextEdit):
         self.document().setDefaultFont(font)
         self.setLineWrapMode(QPlainTextEdit.WidgetWidth if word_wrap else QPlainTextEdit.NoWrap)
 
+        self._style_structure_popup()
         self.analysis_timer.setInterval(self.cfg.get("debounce_ms", 200))
         self.gutter.setVisible(self.cfg.get("show_gutter", True))
         self.update_gutter_width(0)
@@ -3438,6 +3967,25 @@ class LyricEditor(QPlainTextEdit):
     def set_editor_font_size(self, size: int):
         self.cfg["font_size"] = max(11, int(size))
         self.apply_settings(self.cfg)
+
+    def replace_all_text(self, text: str):
+        """Swap the whole lyric body as one undoable edit."""
+        self.analysis_timer.stop()
+        self._cached_static_selections = []
+        self._cached_search_selections = []
+        self.setExtraSelections([])
+
+        cursor = self.textCursor()
+        cursor.beginEditBlock()
+        cursor.select(QTextCursor.Document)
+        cursor.insertText(text)
+        cursor.endEditBlock()
+
+        cursor.setPosition(0)
+        self.setTextCursor(cursor)
+        self.ensureCursorVisible()
+        self.analysis_timer.stop()
+        self.run_analysis()
 
     def set_search_spans(self, spans: list[tuple[int, int]]):
         self.search_spans = spans
@@ -3920,6 +4468,36 @@ class LyricEditor(QPlainTextEdit):
         "[Ad-libs]",
     ]
 
+    def _style_structure_popup(self):
+        if not hasattr(self, "_structure_popup"):
+            return
+        t = get_theme_palette(self.cfg.get("theme", "purple"))
+        self._structure_popup.setStyleSheet(f"""
+            QListWidget {{
+                background-color: {t["bg_elevated"]};
+                border: 1px solid {t["accent"]};
+                border-radius: 8px;
+                padding: 4px;
+                outline: none;
+            }}
+            QListWidget::item {{
+                color: {t["accent_hover"]};
+                background-color: transparent;
+                font-size: 12px;
+                font-weight: 700;
+                padding: 5px 10px;
+                border-radius: 5px;
+            }}
+            QListWidget::item:hover {{
+                background-color: {t["bg_surface"]};
+                color: #FFFFFF;
+            }}
+            QListWidget::item:selected {{
+                background-color: {t["accent_soft"]};
+                color: #FFFFFF;
+            }}
+        """)
+
     def _init_structure_popup(self):
         self._structure_trigger_pos = None
         self._structure_popup = QListWidget(self)
@@ -3928,30 +4506,7 @@ class LyricEditor(QPlainTextEdit):
         self._structure_popup.setMaximumHeight(210)
         self._structure_popup.setFixedWidth(185)
         self._structure_popup.setVisible(False)
-        self._structure_popup.setStyleSheet("""
-            QListWidget {
-                background-color: {t["bg_base"]};
-                border: 1px solid {t["accent"]};
-                border-radius: 8px;
-                padding: 4px;
-                outline: none;
-            }
-            QListWidget::item {
-                color: {t["accent"]};
-                font-size: 12px;
-                font-weight: 700;
-                padding: 5px 10px;
-                border-radius: 5px;
-            }
-            QListWidget::item:hover {
-                background-color: {t["accent_hover"]};
-                color: #FFFFFF;
-            }
-            QListWidget::item:selected {
-                background-color: {t["accent_soft"]};
-                color: #FFFFFF;
-            }
-        """)
+        self._style_structure_popup()
         self._structure_popup.itemClicked.connect(self._insert_selected_structure)
 
     def _open_structure_popup(self, trigger_pos: int):
@@ -4121,6 +4676,8 @@ class FullVaultWindow(QDialog):
         self.active_list = QListWidget()
         self.active_list.currentItemChanged.connect(self.on_active_selected)
         self.active_list.itemDoubleClicked.connect(self.open_selected_active)
+        self.active_list.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.active_list.customContextMenuRequested.connect(self._show_active_context_menu)
         a_split.addWidget(self.active_list)
 
         a_preview_box = QFrame()
@@ -4171,6 +4728,9 @@ class FullVaultWindow(QDialog):
 
         self.bin_list = QListWidget()
         self.bin_list.currentItemChanged.connect(self.on_bin_selected)
+        self.bin_list.itemDoubleClicked.connect(lambda _item: self.restore_selected_from_bin())
+        self.bin_list.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.bin_list.customContextMenuRequested.connect(self._show_bin_context_menu)
         b_split.addWidget(self.bin_list)
 
         b_preview_box = QFrame()
@@ -4219,6 +4779,7 @@ class FullVaultWindow(QDialog):
 
     def _scan_folder(self, folder: str, query: str) -> list[dict]:
         os.makedirs(folder, exist_ok=True)
+        profile_root = os.path.dirname(self.vault_dir)
         items = []
         for fname in os.listdir(folder):
             if not fname.endswith(".json"):
@@ -4234,8 +4795,7 @@ class FullVaultWindow(QDialog):
 
             data = {}
             try:
-                with open(fpath, "r", encoding="utf-8") as f:
-                    data = json.load(f)
+                data = read_encrypted_profile_json(fpath, profile_root, default={}) or {}
             except Exception:
                 pass
 
@@ -4428,6 +4988,144 @@ class FullVaultWindow(QDialog):
                         pass
             self.refresh_all()
             self.on_vault_changed()
+
+    def _build_vault_context_menu(self) -> QMenu:
+        menu = QMenu(self)
+        menu.setStyleSheet("""
+            QMenu {
+                background-color: #13131C;
+                border: 1px solid #3B2864;
+                border-radius: 8px;
+                padding: 5px;
+            }
+            QMenu::item {
+                color: #F4F4F5;
+                font-size: 12px;
+                font-weight: 600;
+                padding: 6px 22px 6px 12px;
+                border-radius: 5px;
+            }
+            QMenu::item:selected {
+                background-color: #433A70;
+                color: #FFFFFF;
+            }
+            QMenu::separator {
+                height: 1px;
+                background-color: #272732;
+                margin: 4px 8px;
+            }
+        """)
+        return menu
+
+    def _run_parent_vault_action(self, method_name: str, *args, refresh_after: bool = False):
+        main_win = self.parent()
+        if main_win is not None and hasattr(main_win, method_name):
+            getattr(main_win, method_name)(*args)
+        if refresh_after:
+            self.refresh_all()
+
+    def _show_active_context_menu(self, pos):
+        item = self.active_list.itemAt(pos)
+        if item:
+            self.active_list.setCurrentItem(item)
+
+        menu = self._build_vault_context_menu()
+        if item:
+            entry = item.data(Qt.UserRole) or {}
+            safe_name = entry.get("safe_name", "")
+
+            act_open = QAction("⚡ Open in Lyric Editor", self)
+            act_open.triggered.connect(self.open_selected_active)
+            menu.addAction(act_open)
+
+            act_export = QAction("Export as PDF...", self)
+            act_export.triggered.connect(lambda: self._run_parent_vault_action("export_vault_track_pdf", safe_name))
+            menu.addAction(act_export)
+
+            menu.addSeparator()
+
+            act_rename = QAction("Rename...", self)
+            act_rename.triggered.connect(
+                lambda: self._run_parent_vault_action("rename_vault_track", safe_name, refresh_after=True)
+            )
+            menu.addAction(act_rename)
+
+            act_dup = QAction("Duplicate", self)
+            act_dup.triggered.connect(
+                lambda: self._run_parent_vault_action("duplicate_vault_track", safe_name, refresh_after=True)
+            )
+            menu.addAction(act_dup)
+
+            act_del = QAction("🗑 Move to Recycle Bin", self)
+            act_del.triggered.connect(self.move_selected_to_bin)
+            menu.addAction(act_del)
+
+            menu.addSeparator()
+
+            act_reveal = QAction("Show in File Explorer", self)
+            act_reveal.triggered.connect(
+                lambda: self._run_parent_vault_action("reveal_vault_track_in_explorer", safe_name)
+            )
+            menu.addAction(act_reveal)
+
+            act_props = QAction("Properties", self)
+            act_props.triggered.connect(
+                lambda: self._run_parent_vault_action("show_vault_track_properties", safe_name)
+            )
+            menu.addAction(act_props)
+        else:
+            act_new = QAction("+ New Track", self)
+            act_new.triggered.connect(
+                lambda: (self._run_parent_vault_action("new_track", refresh_after=True), self.accept())
+            )
+            menu.addAction(act_new)
+
+            act_refresh = QAction("Refresh Vault", self)
+            act_refresh.triggered.connect(self.refresh_all)
+            menu.addAction(act_refresh)
+
+        menu.exec(self.active_list.mapToGlobal(pos))
+
+    def _show_bin_context_menu(self, pos):
+        item = self.bin_list.itemAt(pos)
+        if item:
+            self.bin_list.setCurrentItem(item)
+
+        menu = self._build_vault_context_menu()
+        if item:
+            entry = item.data(Qt.UserRole) or {}
+            fpath = os.path.normpath(entry.get("filepath", ""))
+
+            act_restore = QAction("♻ Restore to Vault", self)
+            act_restore.triggered.connect(self.restore_selected_from_bin)
+            menu.addAction(act_restore)
+
+            act_perm = QAction("🔥 Delete Permanently", self)
+            act_perm.triggered.connect(self.permanently_delete_selected)
+            menu.addAction(act_perm)
+
+            menu.addSeparator()
+
+            act_reveal = QAction("Show in File Explorer", self)
+            act_reveal.triggered.connect(
+                lambda: (
+                    subprocess.Popen(["explorer", "/select,", fpath])
+                    if os.name == "nt" and os.path.exists(fpath)
+                    else os.startfile(self.trash_dir)
+                )
+            )
+            menu.addAction(act_reveal)
+        else:
+            if self.bin_list.count() > 0:
+                act_empty = QAction("Empty Recycle Bin", self)
+                act_empty.triggered.connect(self.empty_recycle_bin)
+                menu.addAction(act_empty)
+
+            act_refresh = QAction("Refresh Recycle Bin", self)
+            act_refresh.triggered.connect(self.refresh_all)
+            menu.addAction(act_refresh)
+
+        menu.exec(self.bin_list.mapToGlobal(pos))
 
 
 # =====================================================================
@@ -4731,7 +5429,7 @@ class FullScreenLyricPreviewDialog(QDialog):
         """)
 
         root = QVBoxLayout(self)
-        root.setContentsMargins(36, 24, 36, 24)
+        root.setContentsMargins(36, 24, 36, 0)
         root.setSpacing(12)
 
         # --- MINIMAL TOP BAR ---
@@ -4769,7 +5467,8 @@ class FullScreenLyricPreviewDialog(QDialog):
         root.addLayout(top_bar)
 
         # --- CENTERED SPOTIFY-STYLE LYRIC STAGE ---
-        from PySide6.QtWidgets import QTextBrowser
+        from PySide6.QtWidgets import QTextBrowser, QGraphicsDropShadowEffect
+        from PySide6.QtGui import QPalette, QPainter, QLinearGradient
 
         stage_row = QHBoxLayout()
         stage_row.addStretch(1)
@@ -4789,7 +5488,6 @@ class FullScreenLyricPreviewDialog(QDialog):
                 selection-color: #FFFFFF;
             }}
         """)
-        from PySide6.QtGui import QPalette
         pal = self.viewer.palette()
         pal.setColor(QPalette.Highlight, QColor(t["accent"]))
         pal.setColor(QPalette.HighlightedText, QColor("#FFFFFF"))
@@ -4799,30 +5497,55 @@ class FullScreenLyricPreviewDialog(QDialog):
 
         root.addLayout(stage_row, 1)
 
-        # --- FLOATING MINIMAL AUTO-SCROLL DOCK ---
-        dock_row = QHBoxLayout()
-        dock_row.addStretch()
+        # --- BOTTOM BLACK GRADIENT FADE OVERLAY ---
+        class _BottomFadeOverlay(QWidget):
+            def __init__(self, parent=None):
+                super().__init__(parent)
+                self.setAttribute(Qt.WA_TransparentForMouseEvents, True)
+                self.setAttribute(Qt.WA_TranslucentBackground, True)
 
-        dock = QFrame()
-        dock.setStyleSheet("""
+            def paintEvent(self, event):
+                painter = QPainter(self)
+                grad = QLinearGradient(0, 0, 0, self.height())
+                grad.setColorAt(0.00, QColor(0, 0, 0, 0))
+                grad.setColorAt(0.18, QColor(0, 0, 0, 22))
+                grad.setColorAt(0.36, QColor(0, 0, 0, 72))
+                grad.setColorAt(0.54, QColor(0, 0, 0, 145))
+                grad.setColorAt(0.72, QColor(0, 0, 0, 215))
+                grad.setColorAt(0.86, QColor(0, 0, 0, 248))
+                grad.setColorAt(1.00, QColor(0, 0, 0, 255))
+                painter.fillRect(self.rect(), grad)
+
+        self._bottom_fade = _BottomFadeOverlay(self)
+
+        # --- FLOATING AUTO-SCROLL DOCK (ELEVATED ABOVE GRADIENT) ---
+        self._floating_dock = QFrame(self)
+        self._floating_dock.setStyleSheet("""
             QFrame {
-                background-color: #12101B;
-                border: 1px solid #2D2B3D;
-                border-radius: 22px;
+                background-color: rgba(18, 16, 27, 238);
+                border: 1px solid #35324A;
+                border-radius: 23px;
             }
         """)
-        dock_lay = QHBoxLayout(dock)
-        dock_lay.setContentsMargins(14, 8, 16, 8)
+        shadow = QGraphicsDropShadowEffect(self._floating_dock)
+        shadow.setBlurRadius(28)
+        shadow.setOffset(0, 8)
+        shadow.setColor(QColor(0, 0, 0, 190))
+        self._floating_dock.setGraphicsEffect(shadow)
+
+        dock_lay = QHBoxLayout(self._floating_dock)
+        dock_lay.setContentsMargins(16, 9, 18, 9)
         dock_lay.setSpacing(12)
 
         self.btn_auto_scroll = QPushButton("▶  Auto Scroll")
+        self.btn_auto_scroll.setMinimumWidth(140)
         self.btn_auto_scroll.setCheckable(True)
         self.btn_auto_scroll.setCursor(Qt.PointingHandCursor)
         self.btn_auto_scroll.clicked.connect(self._toggle_auto_scroll)
         dock_lay.addWidget(self.btn_auto_scroll)
 
         lbl_spd = QLabel("Speed")
-        lbl_spd.setStyleSheet("color: #A1A1AA; font-size: 11px; font-weight: 700; border: none;")
+        lbl_spd.setStyleSheet("color: #A1A1AA; font-size: 11px; font-weight: 700; border: none; background: transparent;")
         dock_lay.addWidget(lbl_spd)
 
         self.speed_slider = QSlider(Qt.Horizontal)
@@ -4836,7 +5559,7 @@ class FullScreenLyricPreviewDialog(QDialog):
 
         self.lbl_speed_val = QLabel("1.0x")
         self.lbl_speed_val.setFixedWidth(34)
-        self.lbl_speed_val.setStyleSheet("color: #C6BEF0; font-family: 'Consolas'; font-size: 11px; font-weight: 700; border: none;")
+        self.lbl_speed_val.setStyleSheet("color: #C6BEF0; font-family: 'Consolas'; font-size: 11px; font-weight: 700; border: none; background: transparent;")
         dock_lay.addWidget(self.lbl_speed_val)
 
         btn_top = QPushButton("↑ Top")
@@ -4844,9 +5567,89 @@ class FullScreenLyricPreviewDialog(QDialog):
         btn_top.clicked.connect(self._scroll_to_top)
         dock_lay.addWidget(btn_top)
 
-        dock_row.addWidget(dock)
-        dock_row.addStretch()
-        root.addLayout(dock_row)
+        self._floating_dock.adjustSize()
+        self._reposition_floating_overlays()
+
+    def _detect_custom_bottom_dock_height(self) -> int:
+        """Detect extra height occupied by floating 3rd-party bottom docks (e.g., MyDockFinder, Nexus, RocketDock)."""
+        if sys.platform != "win32":
+            return 0
+        try:
+            import ctypes
+            from ctypes import wintypes
+
+            user32 = ctypes.windll.user32
+            GWL_EXSTYLE = -20
+            WS_EX_TOPMOST = 0x00000008
+            WS_EX_TOOLWINDOW = 0x00000080
+
+            scr = self.screen() or self.main_win.screen()
+            if scr is None:
+                return 0
+            avail = scr.availableGeometry()
+            dpr = scr.devicePixelRatio() or 1.0
+            avail_bottom_px = int((avail.y() + avail.height()) * dpr)
+            avail_width_px = int(avail.width() * dpr)
+            own_hwnd = int(self.winId())
+
+            max_overlap_px = 0
+            WNDENUMPROC = ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
+
+            def _enum_cb(hwnd, lparam):
+                nonlocal max_overlap_px
+                if hwnd == own_hwnd or not user32.IsWindowVisible(hwnd):
+                    return True
+                ex_style = user32.GetWindowLongW(hwnd, GWL_EXSTYLE)
+                if not (ex_style & WS_EX_TOPMOST):
+                    return True
+                rect = wintypes.RECT()
+                if user32.GetWindowRect(hwnd, ctypes.byref(rect)):
+                    win_w = rect.right - rect.left
+                    win_h = rect.bottom - rect.top
+                    # Bottom-anchored bar/dock: wide enough, reasonable dock height, touching bottom edge
+                    if (
+                        win_w >= avail_width_px * 0.25
+                        and 28 <= win_h <= 180
+                        and abs(rect.bottom - avail_bottom_px) <= 24
+                    ):
+                        overlap = avail_bottom_px - rect.top
+                        if overlap > max_overlap_px:
+                            max_overlap_px = overlap
+                return True
+
+            user32.EnumWindows(WNDENUMPROC(_enum_cb), 0)
+            return int(max_overlap_px / dpr)
+        except Exception:
+            return 0
+
+    def _reposition_floating_overlays(self):
+        w, h = self.width(), self.height()
+        base_margin = max(44, min(72, int(h * 0.05)))
+        custom_dock_h = self._detect_custom_bottom_dock_height()
+        bottom_offset = base_margin + custom_dock_h
+
+        fade_h = bottom_offset + 120
+        if hasattr(self, "_bottom_fade"):
+            self._bottom_fade.setGeometry(0, max(0, h - fade_h), w, fade_h)
+            self._bottom_fade.raise_()
+        if hasattr(self, "_floating_dock"):
+            self._floating_dock.adjustSize()
+            dw = self._floating_dock.width()
+            dh = self._floating_dock.height()
+            self._floating_dock.move((w - dw) // 2, max(0, h - dh - bottom_offset))
+            self._floating_dock.raise_()
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        scr = self.screen() or self.main_win.screen()
+        if scr is not None:
+            # Respect taskbar area so bottom controls are never clipped
+            self.setGeometry(scr.availableGeometry())
+        self._reposition_floating_overlays()
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self._reposition_floating_overlays()
 
     def _populate_lyrics(self):
         import html as html_mod
@@ -5344,6 +6147,7 @@ class NocturneMainWindow(QMainWindow):
         self.trash_dir = os.path.join(self.profile_dir, "tracks_trash")
         os.makedirs(self.vault_dir, exist_ok=True)
         os.makedirs(self.trash_dir, exist_ok=True)
+        self.current_track_safe_name = None
         self.current_track_created_at = None
         self.settings_file = os.path.join(self.profile_dir, "settings.json")
         self.studio_settings = dict(DEFAULT_STUDIO_SETTINGS)
@@ -6002,14 +6806,19 @@ class NocturneMainWindow(QMainWindow):
         self.rate_tier_lbl.setStyleSheet(f"color: {t['accent_hover']}; font-size: 11px; font-weight: 800; letter-spacing: 0.4px; border: none;")
         mini_stats_col.addWidget(self.rate_tier_lbl)
 
-        self.mini_multie_lbl = QLabel("Rhyme: —  •  Flow: —")
+        self.mini_multie_lbl = QLabel("🔥 Rhyme: —  •  🌊 Flow: —")
         self.mini_multie_lbl.setStyleSheet("color: #A1A1AA; font-size: 10px; border: none;")
         mini_stats_col.addWidget(self.mini_multie_lbl)
 
-        self.mini_struct_lbl = QLabel("Structure & Vocab: —")
+        self.mini_struct_lbl = QLabel("🏗 Structure: —  •  🧠 Vocab: —")
         self.mini_struct_lbl.setTextFormat(Qt.PlainText)
         self.mini_struct_lbl.setStyleSheet("color: #D4D4D8; font-size: 11px; border: none;")
         mini_stats_col.addWidget(self.mini_struct_lbl)
+
+        self.mini_near_lbl = QLabel("✨ Near: —")
+        self.mini_near_lbl.setTextFormat(Qt.PlainText)
+        self.mini_near_lbl.setStyleSheet("color: #F9A8D4; font-size: 10px; font-weight: 600; border: none;")
+        mini_stats_col.addWidget(self.mini_near_lbl)
 
         gauge_row.addLayout(mini_stats_col, 1)
         rate_layout.addLayout(gauge_row)
@@ -6048,7 +6857,7 @@ class NocturneMainWindow(QMainWindow):
         self.btn_rate_details = QPushButton("📊 Details")
         self.btn_rate_details.setMinimumWidth(0)
         self.btn_rate_details.setStyleSheet("padding: 5px 6px; font-size: 11px;")
-        self.btn_rate_details.setToolTip("Open Full Interactive Lyric Scorecard & Line Highlights")
+        self.btn_rate_details.setToolTip("Open Full Interactive Lyric Scorecard, Near-Rhyme Radar & Line Highlights")
         self.btn_rate_details.clicked.connect(self.open_rating_breakdown_dialog)
         rate_btn_row.addWidget(self.btn_rate_details, 1)
 
@@ -6083,6 +6892,17 @@ class NocturneMainWindow(QMainWindow):
         self.rhyme_badge.setVisible(False)
         self.solo_rhyme_group = None
         self.rhyme_dots = []
+
+        self.btn_clean_lyrics = QPushButton("🧹 Clean Up")
+        self.btn_clean_lyrics.setObjectName("CleanLyricsBtn")
+        self.btn_clean_lyrics.setFixedHeight(24)
+        self.btn_clean_lyrics.setCursor(Qt.PointingHandCursor)
+        self.btn_clean_lyrics.setToolTip("Clean Up Lyrics — fix capitals, punctuation & song structure (Ctrl+Shift+L)")
+        self.btn_clean_lyrics.clicked.connect(self.open_lyric_cleanup_dialog)
+        editor_toolbar.addWidget(self.btn_clean_lyrics)
+
+        self.cleanup_shortcut = QShortcut(QKeySequence("Ctrl+Shift+L"), self)
+        self.cleanup_shortcut.activated.connect(self.open_lyric_cleanup_dialog)
 
         for idx, (bg_hex, fg_hex) in enumerate(RHYME_PALETTE):
             _c = QColor(bg_hex)
@@ -6167,6 +6987,8 @@ class NocturneMainWindow(QMainWindow):
         )
         self.lyric_editor.textChanged.connect(lambda: self.perform_lyric_search(self.lyric_search_input.text(), auto_jump=False))
         self.lyric_editor.textChanged.connect(self.schedule_realtime_vault_update)
+        self.lyric_editor.textChanged.connect(self._sync_live_rhyme_checker)
+        self.lyric_editor.cursorPositionChanged.connect(self._sync_live_rhyme_checker)
         self.lyric_editor.solo_changed.connect(self._on_editor_solo_changed)
         center_layout.addWidget(self.lyric_editor)
 
@@ -6712,17 +7534,17 @@ class NocturneMainWindow(QMainWindow):
         self.rate_scan_bar.setVisible(True)
         self.rate_scan_bar.setValue(15)
         self.btn_rate_now.setEnabled(False)
-        self.rate_tier_lbl.setText("SCANNING RHYMES...")
+        self.rate_tier_lbl.setText("SCANNING RHYMES & SLANTS...")
         self.rate_scan_timer.start()
 
     def _step_rate_scan(self):
         self.rate_scan_step += 1
         if self.rate_scan_step == 1:
             self.rate_scan_bar.setValue(45)
-            self.rate_tier_lbl.setText("ANALYZING FLOW...")
+            self.rate_tier_lbl.setText("SCANNING NEAR RHYMES...")
         elif self.rate_scan_step == 2:
             self.rate_scan_bar.setValue(78)
-            self.rate_tier_lbl.setText("ANALYZING CADENCE...")
+            self.rate_tier_lbl.setText("ANALYZING FLOW & CADENCE...")
         else:
             self.rate_scan_timer.stop()
             self.rate_scan_bar.setValue(100)
@@ -6741,8 +7563,16 @@ class NocturneMainWindow(QMainWindow):
         self.rate_tier_lbl.setStyleSheet(f"color: {res['color']}; font-size: 11px; font-weight: 800; border: none;")
 
         bd = res["breakdown"]
-        self.mini_multie_lbl.setText(f"Rhyme: {bd['multies']}%  •  Flow: {bd['flow']}%")
-        self.mini_struct_lbl.setText(f"Structure: {bd['structure']}%  •  Vocab: {bd['vocab']}%")
+        self.mini_multie_lbl.setText(f"🔥 Rhyme: {bd['multies']}%  •  🌊 Flow: {bd['flow']}%")
+        self.mini_struct_lbl.setText(f"🏗 Structure: {bd['structure']}%  •  🧠 Vocab: {bd['vocab']}%")
+
+        near = res.get("near") or {}
+        near_count = near.get("count", 0)
+        near_avg = near.get("avg_confidence", 0)
+        if near_count:
+            self.mini_near_lbl.setText(f"✨ Near: {near_count}  •  {near_avg}% avg")
+        else:
+            self.mini_near_lbl.setText("✨ Near: none yet — try a slant")
 
     def open_rating_breakdown_dialog(self):
         self._finalize_lyric_rating(animate=False)
@@ -6752,6 +7582,24 @@ class NocturneMainWindow(QMainWindow):
             on_jump_line_callback=self.lyric_editor.jump_to_line,
         )
         dlg.exec()
+
+    def open_lyric_cleanup_dialog(self):
+        text = self.lyric_editor.toPlainText()
+        if not text.strip():
+            QMessageBox.information(
+                self,
+                "Clean Up Lyrics",
+                "Add some lyrics first, then I can tidy the capitals, punctuation and structure.",
+            )
+            return
+
+        theme_id = getattr(self, "studio_settings", {}).get("theme", "purple")
+        dlg = LyricCleanupDialog(self, text, theme_id=theme_id)
+        if dlg.exec() == QDialog.Accepted:
+            cleaned = dlg.cleaned_text
+            if cleaned and cleaned != text:
+                self.lyric_editor.replace_all_text(cleaned)
+                self.lyric_editor.setFocus()
 
     # --- IN-EDITOR LYRIC SEARCH BAR ---
     def focus_lyric_search(self):
@@ -8265,14 +9113,64 @@ class NocturneMainWindow(QMainWindow):
 
         self.rhyme_badge.setVisible(any_rhyme_active)
 
+    @staticmethod
+    def _extract_bar_end_word(block_text: str) -> str:
+        stripped = block_text.strip()
+        if not stripped:
+            return ""
+        # Abaikan header struktur lagu seperti [Verse 1], [Chorus], dll.
+        if stripped.startswith("[") and stripped.endswith("]") and not re.match(r"^\[\d{1,2}:\d{2}\]$", stripped):
+            return ""
+        # Buang timestamp [MM:SS] sebelum ambil perkataan hujung bar
+        cleaned = re.sub(r"\[\d{1,2}:\d{2}\]", " ", stripped)
+        words = re.findall(r"[A-Za-z0-9'-]+", cleaned)
+        if not words:
+            return ""
+        return re.sub(r"^[^A-Za-z0-9]+|[^A-Za-z0-9]+$", "", words[-1])
+
+    def _sync_live_rhyme_checker(self):
+        if not (hasattr(self, "btn_live_rhyme") and self.btn_live_rhyme.isChecked()):
+            return
+        if not (hasattr(self, "rc_input_a") and hasattr(self, "rc_input_b") and hasattr(self, "lyric_editor")):
+            return
+
+        doc = self.lyric_editor.document()
+        cur = self.lyric_editor.textCursor()
+        start_pos = cur.selectionStart() if cur.hasSelection() else cur.position()
+        block = doc.findBlock(start_pos)
+
+        bar_words = []
+        while block.isValid() and len(bar_words) < 2:
+            end_word = self._extract_bar_end_word(block.text())
+            if end_word:
+                bar_words.append(end_word)
+            block = block.next()
+
+        word_a = bar_words[0] if len(bar_words) >= 1 else ""
+        word_b = bar_words[1] if len(bar_words) >= 2 else ""
+
+        if self.rc_input_a.text() == word_a and self.rc_input_b.text() == word_b:
+            return
+
+        self.rc_input_a.blockSignals(True)
+        self.rc_input_b.blockSignals(True)
+        self.rc_input_a.setText(word_a)
+        self.rc_input_b.setText(word_b)
+        self.rc_input_a.blockSignals(False)
+        self.rc_input_b.blockSignals(False)
+        self._run_rhyme_checker()
+
     def _on_live_rhyme_toggled(self, checked: bool):
         if getattr(self, "_is_restoring_ui_state", False):
             return
         self.studio_settings["live_rhyme_enabled"] = bool(checked)
         self.save_profile_settings()
+        if checked:
+            self._sync_live_rhyme_checker()
 
     def on_editor_cursor_word_changed(self, word: str, force_refresh: bool = False):
         if hasattr(self, "btn_live_rhyme") and self.btn_live_rhyme.isChecked():
+            self._sync_live_rhyme_checker()
             if len(word) < 3 and not force_refresh:
                 return  # probably still typing
             self.lookup_rhyme_word(word, from_live=True, force_refresh=force_refresh)
@@ -8286,7 +9184,9 @@ class NocturneMainWindow(QMainWindow):
         candidate_words = {target_low}
         for key in ("perfect_en", "perfect_bm", "perfect_custom", "slant"):
             for raw_entry in rhyme_data.get(key, []):
-                cleaned = re.sub(r"\s*\[.*?\]|\s*\(slang\)|\s*🔥", "", raw_entry).strip().lower()
+                cleaned = re.sub(
+                    r"\s*[·•]\d+s|\s*\[.*?\]|\s*\(slang\)|\s*🔥", "", raw_entry
+                ).strip().lower()
                 if cleaned:
                     candidate_words.add(cleaned)
 
@@ -8528,9 +9428,10 @@ class NocturneMainWindow(QMainWindow):
         if not self.rhyme_search_input.hasFocus():
             self.rhyme_search_input.setText(w)
 
-        if w_key in self._rhyme_lookup_cache:
+        cached_res = self._rhyme_lookup_cache.get(w_key)
+        if cached_res is not None and (cached_res.get("slant") or not is_rhyme_index_ready()):
             self.set_rhyme_loading(False)
-            self._apply_rhyme_lookup_result(w, from_live, self._rhyme_lookup_cache[w_key])
+            self._apply_rhyme_lookup_result(w, from_live, cached_res)
             return
 
         self._rhyme_lookup_job_id += 1
@@ -8579,21 +9480,22 @@ class NocturneMainWindow(QMainWindow):
         finally:
             self.list_matching_lines.setUpdatesEnabled(True)
 
-        en_items = data["perfect_en"]
-        bm_items = data["perfect_bm"]
-        pack_items = data["perfect_custom"]
-        slant_items = data["slant"]
+        en_items = list(data["perfect_en"])
+        bm_items = list(data["perfect_bm"])
+        pack_items = list(data["perfect_custom"])
+        slant_items = list(data["slant"])
 
-        seen = set()
-        all_items = []
-        for entry in en_items + bm_items + pack_items + slant_items:
-            if entry not in seen:
-                seen.add(entry)
-                all_items.append(entry)
+        # Masukkan slant [near] ke dalam EN & halaman awal ALL supaya terus kelihatan dalam pil
+        en_with_slant = list(dict.fromkeys(en_items[:40] + slant_items + en_items[40:]))
+
+        # Susun ALL supaya rima tepat & [near] muncul seimbang dari halaman 1
+        primary_exact = en_items[:6] + bm_items[:6] + pack_items[:6]
+        rest_items = en_items[6:] + bm_items[6:] + pack_items[6:]
+        all_items = list(dict.fromkeys(primary_exact + slant_items[:12] + rest_items + slant_items[12:]))
 
         self._rhyme_buckets = {
             "ALL": all_items[:150],
-            "EN": en_items[:120],
+            "EN": en_with_slant[:120],
             "BM": bm_items[:120],
             "PACKS": pack_items[:120],
             "SLANT": slant_items[:120],
@@ -8663,14 +9565,28 @@ class NocturneMainWindow(QMainWindow):
 
     def save_track(self):
         title = self.track_title_input.text().strip() or "Untitled_Track"
-        safe_name = self._sanitize_track_filename(title)
+        base_safe = self._sanitize_track_filename(title)
+        prev_safe = getattr(self, "current_track_safe_name", None)
+        old_filepath = os.path.join(self.vault_dir, f"{prev_safe}.json") if prev_safe else None
+
+        safe_name = base_safe
         filepath = os.path.join(self.vault_dir, f"{safe_name}.json")
+
+        # Jika sedang rename trek sedia ada dan nama baharu bertembung dengan fail lain, elak tindih fail lain
+        if prev_safe and prev_safe != safe_name and os.path.exists(filepath):
+            idx = 2
+            while os.path.exists(os.path.join(self.vault_dir, f"{base_safe}_{idx}.json")):
+                idx += 1
+            safe_name = f"{base_safe}_{idx}"
+            filepath = os.path.join(self.vault_dir, f"{safe_name}.json")
+
         now_dt = datetime.now()
         now_str = now_dt.strftime("%d %b %Y • %I:%M %p")
 
         created_at = self.current_track_created_at
-        if not created_at and os.path.exists(filepath):
-            old_data = read_encrypted_profile_json(filepath, self.profile_dir, default={}) or {}
+        source_for_meta = old_filepath if (old_filepath and os.path.exists(old_filepath)) else filepath
+        if not created_at and source_for_meta and os.path.exists(source_for_meta):
+            old_data = read_encrypted_profile_json(source_for_meta, self.profile_dir, default={}) or {}
             created_at = old_data.get("created_at")
         if not created_at:
             created_at = now_str
@@ -8688,7 +9604,36 @@ class NocturneMainWindow(QMainWindow):
             "updated_iso": now_dt.isoformat(),
         }
         write_encrypted_profile_json(filepath, payload, self.profile_dir)
+
+        # Padam fail lama jika pengguna tukar tajuk lagu sedia ada
+        if old_filepath and prev_safe != safe_name and os.path.exists(old_filepath):
+            try:
+                os.remove(old_filepath)
+            except Exception:
+                pass
+
+        self.current_track_safe_name = safe_name
         self.load_vault_list(select_filename=safe_name)
+
+    def autosave_silent(self):
+        if getattr(self, "current_track_safe_name", None) or self.lyric_editor.toPlainText().strip():
+            self.save_track()
+
+    def schedule_realtime_vault_update(self):
+        if getattr(self, "_is_loading_track", False):
+            return
+        if hasattr(self, "realtime_vault_timer"):
+            self.realtime_vault_timer.start()
+
+    def _on_realtime_track_modified(self):
+        if getattr(self, "_is_loading_track", False):
+            return
+        title = self.track_title_input.text().strip() or "Untitled_Track"
+        safe_name = self._sanitize_track_filename(title)
+        filepath = os.path.join(self.vault_dir, f"{safe_name}.json")
+        has_active_file = bool(getattr(self, "current_track_safe_name", None)) or os.path.exists(filepath)
+        if has_active_file or self.lyric_editor.toPlainText().strip():
+            self.save_track()
 
     def schedule_realtime_vault_update(self):
         if getattr(self, "_is_loading_track", False):
@@ -8813,6 +9758,7 @@ class NocturneMainWindow(QMainWindow):
 
         self._is_loading_track = True
         try:
+            self.current_track_safe_name = safe_name
             data = read_encrypted_profile_json(filepath, self.profile_dir, default={}) or {}
             self.track_title_input.setText(data.get("title", safe_name))
             self.bpm_spin.setValue(data.get("bpm", 140))
@@ -8895,6 +9841,8 @@ class NocturneMainWindow(QMainWindow):
 
         write_encrypted_profile_json(dst_path, data, self.profile_dir)
         os.remove(src_path)
+        if getattr(self, "current_track_safe_name", None) == safe_name:
+            self.current_track_safe_name = None
         self.load_vault_list()
 
     def delete_selected_vault_track(self):
@@ -9023,8 +9971,9 @@ class NocturneMainWindow(QMainWindow):
             os.remove(src_path)
 
         # Jika lagu yang di-rename sedang dibuka dalam editor, kemas kini tajuk aktif supaya tidak tercipta fail lama
-        cur_editor_safe = self._sanitize_track_filename(self.track_title_input.text().strip() or "Untitled_Track")
+        cur_editor_safe = getattr(self, "current_track_safe_name", None) or self._sanitize_track_filename(self.track_title_input.text().strip() or "Untitled_Track")
         if cur_editor_safe == safe_name:
+            self.current_track_safe_name = new_safe
             self._is_loading_track = True
             try:
                 self.track_title_input.setText(clean_title)
@@ -9391,6 +10340,7 @@ class NocturneMainWindow(QMainWindow):
             self._last_synced_beat_idx = -1
 
         new_title = self._generate_unique_new_track_title()
+        self.current_track_safe_name = None
         self.current_track_created_at = None
         self.track_title_input.setText(new_title)
         self.lyric_editor.clear()
@@ -9399,8 +10349,9 @@ class NocturneMainWindow(QMainWindow):
         self.sidebar_gauge.set_score(0, "#9483E8", animate=False)
         self.rate_tier_lbl.setText("READY TO SCAN")
         self.rate_tier_lbl.setStyleSheet("color: #C6BEF0; font-size: 11px; font-weight: 800; border: none;")
-        self.mini_multie_lbl.setText("Rhyme: —  •  Flow: —")
-        self.mini_struct_lbl.setText("Structure & Vocab: —")
+        self.mini_multie_lbl.setText("🔥 Rhyme: —  •  🌊 Flow: —")
+        self.mini_struct_lbl.setText("🏗 Structure: —  •  🧠 Vocab: —")
+        self.mini_near_lbl.setText("✨ Near: —")
         self.last_rating_result = None
         self.save_track()
         self.lyric_editor.setFocus()
