@@ -3194,23 +3194,26 @@ class LexiconManagerDialog(QDialog):
             self._apply_theme_to_main("purple")
         self._refresh_installed_themes_list()
 
+    def _cleanup_workers(self):
+        for attr in ("dl_worker", "search_worker", "theme_worker"):
+            w = getattr(self, attr, None)
+            if w is not None:
+                try:
+                    if hasattr(w, "isRunning") and w.isRunning():
+                        w.requestInterruption()
+                        w.quit()
+                        w.wait(500)
+                except Exception:
+                    pass
+                setattr(self, attr, None)
+
+    def done(self, result):
+        self._cleanup_workers()
+        super().done(result)
+
     def closeEvent(self, event):
-        # 1. Hentikan timer & audio yang aktif
-        for timer_name in ("_rhyme_spin_timer", "_realtime_timer", "_vault_timer"):
-            t = getattr(self, timer_name, None)
-            if t and t.isActive():
-                t.stop()
-
-        # (Jika ada beat player / audio thread, panggil stop di sini)
-        if hasattr(self, "stop_beat"):
-            try:
-                self.stop_beat()
-            except Exception:
-                pass
-
-        event.accept()
-        QApplication.quit()
-        os._exit(0)  # Paksa tamatkan semua background/daemon thread PyInstaller
+        self._cleanup_workers()
+        event.accept()    
 
 
 # =====================================================================
@@ -5380,21 +5383,47 @@ class NocturneMainWindow(QMainWindow):
         self.dim_overlay = ModalDimOverlay(self)
         
     def closeEvent(self, event):
+        # 1. Hentikan timer & simpan trek terakhir
         if getattr(self, "realtime_vault_timer", None) and self.realtime_vault_timer.isActive():
             self.realtime_vault_timer.stop()
-            self.save_track()
-        if hasattr(self, "metro_sync_timer") and self.metro_sync_timer.isActive():
-            self.metro_sync_timer.stop()
+            try:
+                self.save_track()
+            except Exception:
+                pass
+
+        for t_name in ("metro_sync_timer", "_rhyme_spin_timer", "realtime_rhyme_timer"):
+            tmr = getattr(self, t_name, None)
+            if tmr and tmr.isActive():
+                tmr.stop()
+
+        # 2. Hentikan audio player & lepaskan fail beat
         if hasattr(self, "player"):
-            self.player.stop()
+            try:
+                self.player.stop()
+                self.player.setSource(QUrl())
+            except Exception:
+                pass
+
+        # 3. Tamatkan semua background worker threads
         editor_workers = list(getattr(self.lyric_editor, "_stale_workers", [])) if hasattr(self, "lyric_editor") else []
         for w in list(getattr(self, "_active_workers", [])) + editor_workers:
-            if w.isRunning():
-                w.quit()
-                if not w.wait(1500):
-                    w.terminate()
-                    w.wait(500)
+            try:
+                if w is not None and w.isRunning():
+                    w.requestInterruption()
+                    w.quit()
+                    if not w.wait(1000):
+                        w.terminate()
+                        w.wait(300)
+            except Exception:
+                pass
+
         super().closeEvent(event)
+
+        # 4. Jika bukan sedang tukar profil, tamatkan keseluruhan proses PyInstaller
+        if not getattr(self, "_switching_profile", False):
+            QApplication.processEvents()
+            QApplication.quit()
+            os._exit(0)
 
     def _open_lyrics_analyzer(self):
         lyrics_txt = self.lyric_editor.toPlainText() if hasattr(self, "lyric_editor") else ""
