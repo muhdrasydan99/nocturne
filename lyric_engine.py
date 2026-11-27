@@ -10,6 +10,11 @@ import hashlib
 import hmac
 import secrets
 from functools import lru_cache
+from collections import OrderedDict
+import heapq
+import threading
+import gc
+import time
 from collections import defaultdict
 
 try:
@@ -754,6 +759,8 @@ def _strip_stress(phones: list[str] | tuple[str, ...]) -> tuple[str, ...]:
 # LEXICON MANAGER (PROFILE-SCOPED CUSTOM SLANG + LANGUAGE PACKS)
 # =====================================================================
 class LexiconManager:
+    version = 0  # bumped whenever slang, packs or pronunciations change
+
     def __init__(self):
         self.profile_dir = None
         self.custom_slang = {}
@@ -788,6 +795,7 @@ class LexiconManager:
         self._rebuild_active_pack_set()
 
     def _save_slang(self):
+        self.version += 1
         if not self.profile_dir:
             return
         write_encrypted_profile_json(
@@ -797,6 +805,7 @@ class LexiconManager:
         )
 
     def _save_pron(self):
+        self.version += 1
         if not self.profile_dir:
             return
         write_encrypted_profile_json(
@@ -871,6 +880,7 @@ class LexiconManager:
         )
 
     def _rebuild_active_pack_set(self):
+        self.version += 1
         words = set()
         for pdata in self.language_packs.values():
             if pdata.get("enabled", True):
@@ -912,7 +922,8 @@ class LexiconManager:
             self._rebuild_active_pack_set()
             self._save_packs()
 
-    def get_phonetic_profile(self, word: str, force_lang: str | None = None) -> dict:
+    def get_phonetic_profile(self, word: str, force_lang: str | None = None,
+                             cache: bool = True) -> dict:
         w_low = re.sub(r"^[^A-Za-z0-9]+|[^A-Za-z0-9]+$", "", word).lower()
         if not w_low:
             return {"word": word, "norm": "", "lang": "EN", "phones": [], "units": [], "syllables": 0,
@@ -950,7 +961,8 @@ class LexiconManager:
             "syllables": syl_count,
             "pron_override": bool(override),
         }
-        self._phoneme_cache[cache_key] = profile
+        if cache:
+            self._phoneme_cache[cache_key] = profile
         return profile
 
 
@@ -1394,11 +1406,25 @@ _BM_RHYME_INDEX: list[tuple[str, dict]] = []
 _BM_RHYME_INDEX_SIG: tuple[int, int] = (-1, -1)
 
 
+_CMU_INDEX_LOCK = threading.RLock()
+_CMU_INDEX_READY = False
+
+
 def _ensure_rhyme_lookup_indexes() -> None:
-    if _RHYME_PART_INDEX:
+    """Thread-safe: nobody can read a half-built index."""
+    global _CMU_INDEX_READY
+    if _CMU_INDEX_READY:
         return
+    with _CMU_INDEX_LOCK:
+        if not _CMU_INDEX_READY:
+            _build_cmu_indexes()
+            _CMU_INDEX_READY = True
+
+
+def _build_cmu_indexes() -> None:
 
     seen_pairs: set[tuple[str, str]] = set()
+    near_done: set[str] = set()
 
     def _index_word(w_low: str, phones: list[str] | tuple[str, ...]):
         part = _rhyming_part(phones)
@@ -1415,13 +1441,25 @@ def _ensure_rhyme_lookup_indexes() -> None:
         part_tokens = part.split()
         if part_tokens:
             lead_vowel = part_tokens[0]
-            if lead_vowel in VOWEL_FEATURES:
-                _VOWEL_TAIL_INDEX.setdefault(lead_vowel, []).append((w_low, syls))
+            if lead_vowel in VOWEL_FEATURES and (w_low, lead_vowel) not in near_done:
+                near_done.add((w_low, lead_vowel))
+                tail = _rhyme_tail_units(extract_syllable_units(
+                    list(EN_ARPABET_OVERRIDES.get(w_low) or phones)))
+                if tail and tail[0]["vowel"] == lead_vowel:
+                    key = tuple(u["vowel"] for u in tail)
+                    codas = tuple(tuple(u["coda"]) for u in tail)
+                    # words with the same ending share one group
+                    _VOWEL_TAIL_INDEX.setdefault(key, {}).setdefault(codas, []).append(w_low)
 
     for w_ov, ph_ov in EN_ARPABET_OVERRIDES.items():
         _index_word(w_ov, ph_ov)
 
+    background = threading.current_thread() is not threading.main_thread()
+    slice_start = time.perf_counter()
     for w_cmu, prons in _CMU_DICT.items():
+        if background and time.perf_counter() - slice_start >= BUILD_SLICE_SECONDS:
+            time.sleep(BUILD_PAUSE_SECONDS)
+            slice_start = time.perf_counter()
         if not re.match(r"^[a-z][a-z'-]{1,22}$", w_cmu):
             continue
         for pr in prons[:2]:
@@ -1491,82 +1529,114 @@ def _syl_badge(syls: int) -> str:
     return f" ·{syls}s" if syls >= 2 else ""
 
 
-_CUSTOM_POOL_CACHE = {
-    "sig": None,
-    "by_part": {},
-    "by_vowel": {},
-    "fallback": [],
-}
+# ---------------------------------------------------------------------
+# FAST RHYME INDEX (built once, supports 300k+ pack words)
+# Every possible match shares the target's final sound (last vowel + what follows),
+# so words are bucketed by that sound, then by the second-last vowel.
+# Entry: (word, stripped_phones, syllables, lang, rhyming_part)
+# ---------------------------------------------------------------------
+_INDEX_LOCK = threading.RLock()
+_INDEX = {"sig": None, "bm": {}, "custom": {}}
+_RESULT_CACHE: OrderedDict = OrderedDict()
+_RESULT_CACHE_SIZE = 512
+BUILD_SLICE_SECONDS = 0.004  # work this long ...
+BUILD_PAUSE_SECONDS = 0.006  # ... then give the UI this long (bigger = smoother, slower build)
 
 
-def _get_indexed_custom_candidates(target_parts: list[str], t_phones: tuple, is_bm: bool) -> list[tuple[str, dict]]:
-    """Build O(1) phonetic buckets for custom_slang + active_pack_words (supports 300k+ entries)."""
-    slang_keys = tuple(LEXICON.custom_slang.keys())
-    pack_words = LEXICON.active_pack_words
-    pack_len = len(pack_words)
-    # Fast lightweight signature to detect pack/slang updates without hashing 300k strings every call
-    sample = tuple(list(pack_words)[:5] + list(pack_words)[-5:]) if pack_len else ()
-    sig = (len(slang_keys), slang_keys[:10], pack_len, sample)
+def _index_signature() -> tuple:
+    packs = LEXICON.active_pack_words
+    return (LEXICON.version, id(packs), len(packs), len(LEXICON.custom_slang))
 
-    if _CUSTOM_POOL_CACHE["sig"] != sig:
-        by_part: dict[str, list[tuple[str, dict]]] = {}
-        by_vowel: dict[str, list[tuple[str, dict]]] = {}
-        fallback: list[tuple[str, dict]] = []
 
-        seen = set()
-        for raw_cand in list(slang_keys) + list(pack_words):
-            cand = raw_cand.strip()
-            if not cand or cand in seen:
-                continue
-            seen.add(cand)
+def _add_to_index(table: dict, word: str, prof: dict, shared: dict):
+    phones = _strip_stress(prof["phones"])
+    phones = shared.setdefault(phones, phones)  # identical sounds stored once
+    vowels = _vowel_positions(phones)
+    if not vowels:
+        return
+    penult = phones[vowels[-2]] if len(vowels) >= 2 else ""
+    rpart = _rhyming_part(prof["phones"]) if prof["lang"] != "BM" else ""
+    table.setdefault(phones[vowels[-1]:], {}).setdefault(penult, []).append(
+        (word, phones, prof["syllables"], prof["lang"], rpart))
 
-            # For multi-word lines/phrases, index by the final word's phonetics
-            tail_word = cand.split()[-1] if " " in cand else cand
-            c_prof = LEXICON.get_phonetic_profile(tail_word)
-            phones = c_prof.get("phones", ())
-            stripped = _strip_stress(phones)
 
-            rpart = _rhyming_part(phones) if phones else ""
-            if rpart:
-                by_part.setdefault(rpart, []).append((cand, c_prof))
+def _get_rhyme_index() -> dict:
+    sig = _index_signature()
+    if _INDEX["sig"] == sig:
+        return _INDEX
+    with _INDEX_LOCK:
+        sig = _index_signature()
+        if _INDEX["sig"] == sig:
+            return _INDEX
+        packs = set(LEXICON.active_pack_words)  # snapshot
+        slang = set(LEXICON.custom_slang)
+        bm: dict = {}
+        custom: dict = {}
+        shared: dict = {}
+        # Pausing often lets the UI thread run while this builds in the background.
+        # Automatic garbage collection is paused too: with this many new objects it
+        # causes long freezes.
+        background = threading.current_thread() is not threading.main_thread()
+        gc_was_on = gc.isenabled()
+        gc.disable()
+        try:
+            slice_start = time.perf_counter()
+            for raw in packs | slang | BM_LEXICON_HINTS:
+                if background and time.perf_counter() - slice_start >= BUILD_SLICE_SECONDS:
+                    time.sleep(BUILD_PAUSE_SECONDS)
+                    slice_start = time.perf_counter()
+                word = raw.strip()
+                if not word:
+                    continue
+                tail_word = word.split()[-1] if " " in word else word
+                prof = LEXICON.get_phonetic_profile(tail_word, cache=False)
+                if raw in packs or raw in slang:
+                    _add_to_index(custom, word, prof, shared)
+                if raw in BM_LEXICON_HINTS or (
+                        raw in packs and detect_word_language(raw, packs) == "BM"):
+                    bm_prof = (prof if prof["lang"] == "BM" and tail_word == word
+                               else LEXICON.get_phonetic_profile(raw, force_lang="BM", cache=False))
+                    if bm_prof["units"]:
+                        _add_to_index(bm, raw, bm_prof, shared)
+        except BaseException:
+            if gc_was_on:
+                gc.enable()
+            raise
+        if gc_was_on:
+            gc.freeze()  # the finished index is long-lived: never rescan it
+            gc.enable()
+        _RESULT_CACHE.clear()
+        _INDEX.update(sig=sig, bm=bm, custom=custom)
+    return _INDEX
 
-            v_pos = _vowel_positions(stripped) if stripped else []
-            if v_pos:
-                last_v = stripped[v_pos[-1]]
-                by_vowel.setdefault(last_v, []).append((cand, c_prof))
-            else:
-                fallback.append((cand, c_prof))
 
-        _CUSTOM_POOL_CACHE["sig"] = sig
-        _CUSTOM_POOL_CACHE["by_part"] = by_part
-        _CUSTOM_POOL_CACHE["by_vowel"] = by_vowel
-        _CUSTOM_POOL_CACHE["fallback"] = fallback
+def is_rhyme_index_ready() -> bool:
+    """Cheap check so the UI never waits for the index to be built."""
+    return _CMU_INDEX_READY and _INDEX["sig"] == _index_signature()
 
-    # Retrieve only relevant phonetic buckets instead of scanning all 300k+ entries
-    bucket: list[tuple[str, dict]] = []
-    seen_cands = set()
 
-    for part in target_parts:
-        for item in _CUSTOM_POOL_CACHE["by_part"].get(part, ()):
-            if item[0] not in seen_cands:
-                seen_cands.add(item[0])
-                bucket.append(item)
-
-    v_pos_t = _vowel_positions(t_phones) if t_phones else []
-    if v_pos_t:
-        last_v_t = t_phones[v_pos_t[-1]]
-        for item in _CUSTOM_POOL_CACHE["by_vowel"].get(last_v_t, ()):
-            if item[0] not in seen_cands:
-                seen_cands.add(item[0])
-                bucket.append(item)
-
-    if is_bm and not bucket:
-        bucket.extend(_CUSTOM_POOL_CACHE["fallback"][:500])
-
-    return bucket
+def warm_up_rhyme_index():
+    """Call from a background thread at app start (and after changing packs)."""
+    _ensure_rhyme_lookup_indexes()
+    _get_rhyme_index()
 
 
 def find_rhymes_for_word(word: str, limit: int = 150) -> dict:
+    """Cached wrapper: moving the cursor back to a word costs nothing."""
+    with _INDEX_LOCK:
+        _get_rhyme_index()
+        key = (word.strip(), limit)
+        result = _RESULT_CACHE.get(key)
+        if result is None:
+            result = _RESULT_CACHE[key] = _search_rhymes(word, limit)
+            if len(_RESULT_CACHE) > _RESULT_CACHE_SIZE:
+                _RESULT_CACHE.popitem(last=False)
+        else:
+            _RESULT_CACHE.move_to_end(key)
+        return {k: (list(v) if isinstance(v, (list, tuple)) else v) for k, v in result.items()}
+
+
+def _search_rhymes(word: str, limit: int) -> dict:
     clean = re.sub(r"^[^A-Za-z0-9'-]+|[^A-Za-z0-9'-]+$", "", word).strip()
     if not clean:
         return {
@@ -1600,24 +1670,29 @@ def find_rhymes_for_word(word: str, limit: int = 150) -> dict:
             if p_cmu and p_cmu not in target_parts:
                 target_parts.append(p_cmu)
 
-    def _match_tier(c_prof: dict) -> int:
-        c_phones = _strip_stress(c_prof["phones"])
-        if not c_phones:
-            return 0
+    target_tails = [tuple(p.split()) for p in target_parts]
+
+    def _match_tier(entry: tuple) -> int:
+        _, c_phones, _, c_lang, c_rpart = entry
         if is_bm:
             return _bm_rhyme_tier(t_phones, c_phones)
-        if c_prof["lang"] == "BM":
-            for part in target_parts:
-                p = tuple(part.split())
-                v = _vowel_positions(c_phones)
-                if v and c_phones[-len(p):] == p:
-                    return 4
-            return 0
-        return 4 if _rhyming_part(c_prof["phones"]) in target_parts else 0
+        if c_lang == "BM":
+            return 4 if any(c_phones[-len(p):] == p for p in target_tails) else 0
+        return 4 if c_rpart in target_parts else 0
 
-    def _closeness(c_prof: dict) -> tuple:
-        return (-_shared_suffix_len(t_phones, _strip_stress(c_prof["phones"])),
-                abs(c_prof["syllables"] - target_prof["syllables"]))
+    def _closeness(entry: tuple) -> tuple:
+        return (-_shared_suffix_len(t_phones, entry[1]),
+                abs(entry[2] - target_prof["syllables"]))
+
+    # which final sounds can possibly match this target
+    sources = [t_phones] if is_bm else target_tails
+    rimes = set()
+    for phones in sources:
+        v = _vowel_positions(phones)
+        if v:
+            rimes.add(phones[v[-1]:])
+    t_vowels = _vowel_positions(t_phones)
+    t_penult = t_phones[t_vowels[-2]] if is_bm and len(t_vowels) >= 2 else None
 
     perfect_en: list[str] = []
     if not is_bm:
@@ -1634,55 +1709,63 @@ def find_rhymes_for_word(word: str, limit: int = 150) -> dict:
         perfect_en = [f"{c}{_syl_badge(v[3])}"
                       for c, v in sorted(found.items(), key=lambda kv: kv[1][:3])][:limit]
 
-    bm_matches = []
-    for cand, c_prof in _get_bm_rhyme_pool():
-        if cand != norm:
-            tier = _match_tier(c_prof)
-            if tier:
-                bm_matches.append((tier, _closeness(c_prof), cand, c_prof))
+    index = _get_rhyme_index()
 
-    custom_matches = []
-    for cand, c_prof in _get_indexed_custom_candidates(target_parts, t_phones, is_bm):
-        if cand != norm:
-            tier = _match_tier(c_prof)
-            if tier:
-                custom_matches.append((tier, _closeness(c_prof), cand, c_prof))
+    def _collect(table: dict, penult: str | None) -> list:
+        matches = []
+        for rime in rimes:
+            groups = table.get(rime, {})
+            selected = groups.values() if penult is None else (groups.get(penult, ()),)
+            for group in selected:
+                for entry in group:
+                    if entry[0] != norm:
+                        tier = _match_tier(entry)
+                        if tier:
+                            matches.append((tier, _closeness(entry), entry[0], entry[2]))
+        return matches
+
+    # Fast path: only words sharing the second-last vowel can be true Malay rhymes
+    bm_matches = _collect(index["bm"], t_penult)
+    custom_matches = _collect(index["custom"], t_penult)
+    if t_penult is not None and not (bm_matches or custom_matches):
+        bm_matches = _collect(index["bm"], None)  # near rhymes only
+        custom_matches = _collect(index["custom"], None)
 
     best = max((m[0] for m in bm_matches + custom_matches), default=0)
 
     def _top(matches):
-        return sorted((m for m in matches if m[0] == best and best >= 2), key=lambda m: (m[1], m[2]))
+        return heapq.nsmallest(
+            limit, (m for m in matches if m[0] == best and best >= 2), key=lambda m: (m[1], m[2]))
 
-    perfect_bm = [f"{c}{_syl_badge(p['syllables'])}" for _, _, c, p in _top(bm_matches)][:limit]
+    perfect_bm = [f"{c}{_syl_badge(n)}" for _, _, c, n in _top(bm_matches)]
 
-    perfect_custom: list[str] = []
-    for _, _, cand, _p in _top(custom_matches):
-        is_slang = cand in LEXICON.custom_slang
-        perfect_custom.append(f"{cand} [slang]" if is_slang else cand)
-    perfect_custom = perfect_custom[:limit]
+    perfect_custom: list[str] = [
+        f"{c} [slang]" if c in LEXICON.custom_slang else c for _, _, c, _n in _top(custom_matches)]
 
     slant: list[str] = []
     if not (perfect_en or perfect_bm or perfect_custom):
         near: dict[str, tuple] = {}
-        for tier, key, cand, c_prof in bm_matches + custom_matches:
+        for _tier, key, cand, _n in bm_matches + custom_matches:
             near[cand] = (0, key, cand, f"{cand} [near]")
         if not is_bm:
             t_tail = _rhyme_tail_units(target_prof["units"])
-            lead_v = t_tail[0]["vowel"] if t_tail else ""
-            for cand, _syls in _VOWEL_TAIL_INDEX.get(lead_v, []):
-                if cand == norm or cand in near:
-                    continue
-                c_units = extract_syllable_units(_lookup_cmu_phones(cand))
-                c_tail = _rhyme_tail_units(c_units)
-                if len(c_tail) != len(t_tail) or c_tail[0]["vowel"] != lead_v:
-                    continue
-                if any(a["vowel"] != b["vowel"] for a, b in zip(t_tail, c_tail)):
-                    continue
-                conf = sum(consonant_seq_similarity(a["coda"], b["coda"])
-                           for a, b in zip(t_tail, c_tail)) / len(t_tail)
+            groups = _VOWEL_TAIL_INDEX.get(tuple(u["vowel"] for u in t_tail), {})
+            best_groups = []
+            for codas, words in groups.items():
+                conf = sum(consonant_seq_similarity(a["coda"], b)
+                           for a, b in zip(t_tail, codas)) / len(t_tail)
                 if conf >= 0.5:
-                    pct = int(65 + 34 * min(conf, 1.0))
-                    near[cand] = (1, (-conf, len(cand)), cand, f"{cand} [{pct}%]")
+                    best_groups.append((conf, words))
+            best_groups.sort(key=lambda g: -g[0])
+            added = 0
+            for conf, words in best_groups:
+                pct = int(65 + 34 * min(conf, 1.0))
+                for cand in heapq.nsmallest(NEAREST_LIMIT + 1, words, key=lambda w: (len(w), w)):
+                    if cand != norm and cand not in near:
+                        near[cand] = (1, (-conf, len(cand)), cand, f"{cand} [{pct}%]")
+                        added += 1
+                if added >= NEAREST_LIMIT * 2 and conf < best_groups[0][0]:
+                    break
         slant = [v[3] for v in sorted(near.values(), key=lambda v: v[:3])][:min(limit, NEAREST_LIMIT)]
 
     return {
