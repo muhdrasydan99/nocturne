@@ -25,7 +25,6 @@ CloseApplications=yes
 Name: "desktopicon"; Description: "Create shortcut in Desktop"; Flags: unchecked
 
 [Files]
-; profiles sengaja dikecualikan: data test kau tak patut masuk dalam installer
 Source: "dist\Nocturne\*"; DestDir: "{app}"; Excludes: "\profiles"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Icons]
