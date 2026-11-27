@@ -4960,7 +4960,7 @@ class FullScreenLyricPreviewDialog(QDialog):
                 f'</div>'
             )
 
-        blocks.append('<div style="height:180px;">&nbsp;</div>')
+        blocks.extend([f'<div style="font-size:{base_size}pt; line-height:1.65;">&nbsp;</div>' for _ in range(25)])
 
         html_doc = f"""
         <html>
@@ -4983,12 +4983,6 @@ class FullScreenLyricPreviewDialog(QDialog):
 
     def _step_auto_scroll(self):
         sb = self.viewer.verticalScrollBar()
-        if sb.value() >= sb.maximum():
-            self._auto_scroll_active = False
-            self.btn_auto_scroll.setChecked(False)
-            self.btn_auto_scroll.setText("▶  Auto Scroll")
-            self._scroll_timer.stop()
-            return
 
         # Px per 16ms tick scaled smoothly by speed slider
         px_per_tick = self.speed_slider.value() / 42.0
