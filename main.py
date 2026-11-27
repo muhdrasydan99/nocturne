@@ -3195,13 +3195,22 @@ class LexiconManagerDialog(QDialog):
         self._refresh_installed_themes_list()
 
     def closeEvent(self, event):
-        for worker in (self.dl_worker, self.search_worker, self.theme_worker):
-            if worker is not None and worker.isRunning():
-                worker.quit()
-                if not worker.wait(1200):
-                    worker.terminate()
-                    worker.wait(400)
-        super().closeEvent(event)
+        # 1. Hentikan timer & audio yang aktif
+        for timer_name in ("_rhyme_spin_timer", "_realtime_timer", "_vault_timer"):
+            t = getattr(self, timer_name, None)
+            if t and t.isActive():
+                t.stop()
+
+        # (Jika ada beat player / audio thread, panggil stop di sini)
+        if hasattr(self, "stop_beat"):
+            try:
+                self.stop_beat()
+            except Exception:
+                pass
+
+        event.accept()
+        QApplication.quit()
+        os._exit(0)  # Paksa tamatkan semua background/daemon thread PyInstaller
 
 
 # =====================================================================
