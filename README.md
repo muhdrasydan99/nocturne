@@ -6,7 +6,8 @@
 
 > **Status:** v1.1.0-beta
 
-<img width="1482" height="942" alt="{398839CD-62E4-478E-B1D8-F198D2BF9B9F}" src="https://github.com/user-attachments/assets/de63aa7d-2544-4b5c-8bbf-77d61b7970ee" />
+<img width="1482" height="942" alt="image" src="https://github.com/user-attachments/assets/36f03958-c0e2-4aa1-bb5f-bd0722568a13" />
+
 
 ## What's New in v1.1.0-beta
 
