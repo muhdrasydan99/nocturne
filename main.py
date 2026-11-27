@@ -8469,6 +8469,29 @@ class NocturneMainWindow(QMainWindow):
             QMessageBox.warning(self, "Download Failed", f"Failed to download update:\n{result}")
             return
 
+        if getattr(sys, "frozen", False) and result.lower().endswith(".exe"):
+            QMessageBox.information(
+                self,
+                "Ready to Install",
+                "Update downloaded! Nocturne will now close and open the installer.",
+            )
+            # Run the installer itself. Never copy it over Nocturne.exe.
+            app_dir = os.path.dirname(sys.executable)
+            env = dict(os.environ, PYINSTALLER_RESET_ENVIRONMENT="1")
+            try:
+                subprocess.Popen([result, f"/DIR={app_dir}"], env=env)
+            except OSError as exc:
+                QMessageBox.warning(self, "Update Failed", f"Could not start the installer:\n{exc}")
+                return
+            self.close()  # saves the track and exits
+        else:
+            QMessageBox.information(
+                self,
+                "Update Downloaded",
+                f"Update saved to:\n{result}\n\nOpening folder now.",
+            )
+            QDesktopServices.openUrl(QUrl.fromLocalFile(os.path.dirname(result)))
+
         downloaded_file = result
         # Jika dijalankan sebagai .exe (PyInstaller frozen) dan asset ialah .exe
         if getattr(sys, "frozen", False) and downloaded_file.lower().endswith(".exe"):
