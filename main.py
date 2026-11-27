@@ -38,7 +38,7 @@ from lyric_engine import (
     fetch_url_text, parse_wordlist_content, search_github_wordlists,
     fetch_repo_wordlist_files, set_active_profile_key, 
     derive_profile_crypto_key, write_encrypted_profile_json,
-    read_encrypted_profile_json,
+    read_encrypted_profile_json, check_rhyme_pair, run_songwriting_coach,
 )
 
 def resource_path(relative_path: str) -> Path:
@@ -67,12 +67,87 @@ def get_settings_file() -> Path:
 def safe_qfont(family: str, size: int, bold: bool = False) -> QFont:
     """Constructs a QFont with a guaranteed positive point size (> 0)."""
     pt = max(1, int(size) if size is not None else 12)
-    qf = QFont(family or "Segoe UI", pt)
+    qf = QFont(family or "SF-Pro-Display-Regular", pt)
     qf.setPointSize(pt)
     qf.setBold(bool(bold))
     qf.setStyleStrategy(QFont.PreferAntialias)
     return qf
 
+# =====================================================================
+# NOCTURNE THEMES (v1.1.0 UPDATE)
+# =====================================================================
+
+NOCTURNE_THEMES = {
+    "purple": {
+        "name": "Nocturne Purple (Default)",
+        "bg_base": "#0B0B0F",
+        "bg_surface": "#13131A",
+        "bg_elevated": "#1A1A24",
+        "border": "#252534",
+        "accent": "#8B5CF6",
+        "accent_hover": "#A78BFA",
+        "accent_soft": "rgba(139, 92, 246, 0.16)",
+        "accent_border": "rgba(139, 92, 246, 0.45)",
+    },
+    "cyan": {
+        "name": "Midnight Cyan",
+        "bg_base": "#090D12",
+        "bg_surface": "#111822",
+        "bg_elevated": "#16202E",
+        "border": "#1E293B",
+        "accent": "#06B6D4",
+        "accent_hover": "#22D3EE",
+        "accent_soft": "rgba(6, 182, 212, 0.16)",
+        "accent_border": "rgba(6, 182, 212, 0.45)",
+    },
+    "crimson": {
+        "name": "Crimson Vinyl",
+        "bg_base": "#0E0A0C",
+        "bg_surface": "#181115",
+        "bg_elevated": "#22171D",
+        "border": "#2E1F27",
+        "accent": "#F43F5E",
+        "accent_hover": "#FB7185",
+        "accent_soft": "rgba(244, 63, 94, 0.16)",
+        "accent_border": "rgba(244, 63, 94, 0.45)",
+    },
+    "emerald": {
+        "name": "Emerald Analog",
+        "bg_base": "#090E0C",
+        "bg_surface": "#101915",
+        "bg_elevated": "#16241E",
+        "border": "#1E3129",
+        "accent": "#10B981",
+        "accent_hover": "#34D399",
+        "accent_soft": "rgba(16, 185, 129, 0.16)",
+        "accent_border": "rgba(16, 185, 129, 0.45)",
+    },
+    "amber": {
+        "name": "Amber Tape",
+        "bg_base": "#0E0C09",
+        "bg_surface": "#181410",
+        "bg_elevated": "#221C16",
+        "border": "#30271E",
+        "accent": "#F59E0B",
+        "accent_hover": "#FBBF24",
+        "accent_soft": "rgba(245, 158, 11, 0.16)",
+        "accent_border": "rgba(245, 158, 11, 0.45)",
+    },
+}
+
+def _auto_accent_fg(hex_color: str) -> str:
+    c = QColor(hex_color)
+    if not c.isValid():
+        return "#FFFFFF"
+    luminance = (0.299 * c.red() + 0.587 * c.green() + 0.114 * c.blue()) / 255.0
+    return "#0A0A0A" if luminance > 0.62 else "#FFFFFF"
+
+def get_theme_palette(theme_id: str = "purple") -> dict:
+    custom = globals().get("CUSTOM_THEMES", {})
+    raw = custom.get(theme_id) or NOCTURNE_THEMES.get(theme_id) or NOCTURNE_THEMES.get("purple") or next(iter(NOCTURNE_THEMES.values()))
+    pal = dict(raw)
+    pal.setdefault("accent_fg", _auto_accent_fg(pal.get("accent", "#6D5BD0")))
+    return pal
 
 # =====================================================================
 # NOCTURNE NEON CRESCENT + SOUNDWAVE APP ICON GENERATOR
@@ -199,13 +274,23 @@ def build_dropdown_arrow_svg() -> str:
     return svg_path.replace("\\", "/")
 
 
-def build_obsidian_qss() -> str:
+def build_obsidian_qss(theme_id: str = "purple") -> str:
+    t = get_theme_palette(theme_id)
+    bg_base = t["bg_base"]
+    bg_surface = t["bg_surface"]
+    bg_elevated = t["bg_elevated"]
+    border = t["border"]
+    accent = t["accent"]
+    accent_hover = t["accent_hover"]
+    accent_soft = t["accent_soft"]
+    accent_border = t["accent_border"]
     arrow_url = build_dropdown_arrow_svg()
+
     return f"""
 QMainWindow, QWidget, QDialog {{
-    background-color: #0B0B0F;
+    background-color: {bg_base};
     color: #F4F4F5;
-    font-family: 'Segoe UI Variable Text', 'Segoe UI', 'Inter', sans-serif;
+    font-family: 'SF-Pro-Display-Regular', 'SF Pro Display', 'SF Pro', 'Segoe UI', sans-serif;
     font-size: 13px;
 }}
 QScrollArea {{
@@ -217,21 +302,21 @@ QSplitter::handle {{
     width: 3px;
 }}
 QSplitter::handle:hover {{
-    background-color: #9483E8;
+    background-color: {accent};
 }}
 QFrame#PanelCard {{
     background-color: transparent;
-    border: 1px solid #22222C;
+    border: 1px solid {border};
     border-radius: 12px;
 }}
 QFrame#ProfileCard {{
-    background-color: #14141B;
-    border: 1px solid #2A2A36;
+    background-color: {bg_surface};
+    border: 1px solid {border};
     border-radius: 16px;
 }}
 QFrame#ProfileCard:hover {{
-    background-color: #1C1A28;
-    border: 1px solid #9483E8;
+    background-color: {bg_elevated};
+    border: 1px solid {accent};
 }}
 QLabel {{
     color: #E4E4E7;
@@ -251,8 +336,8 @@ QLabel#TitleLogo {{
     letter-spacing: 2px;
 }}
 QLabel#BadgeStat {{
-    background-color: #191922;
-    border: 1px solid #2D2D3A;
+    background-color: {bg_surface};
+    border: 1px solid {border};
     color: #E2DEF8;
     padding: 4px 10px;
     border-radius: 6px;
@@ -261,33 +346,33 @@ QLabel#BadgeStat {{
     font-weight: 700;
 }}
 QPushButton {{
-    background-color: #191922;
+    background-color: {bg_surface};
     color: #F4F4F5;
-    border: 1px solid #2D2D3A;
+    border: 1px solid {border};
     border-radius: 8px;
     padding: 6px 12px;
     font-weight: 600;
 }}
 QPushButton:hover {{
-    background-color: #23222F;
-    border-color: #55507A;
+    background-color: {bg_elevated};
+    border-color: {accent_border};
     color: #FFFFFF;
 }}
 QPushButton:disabled {{
-    background-color: #121218;
+    background-color: {bg_base};
     color: #636370;
-    border-color: #22222B;
+    border-color: {border};
 }}
 QPushButton#PrimaryBtn {{
-    background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #7A68DC, stop:1 #5F4EBD);
-    border: 1px solid #8D7DE6;
-    color: #FFFFFF;
-    font-weight: 700;
-}}
-QPushButton#PrimaryBtn:hover {{
-    background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #8978E8, stop:1 #6D5BD0);
-    border-color: #AFA2F2;
-}}
+            background-color: {accent};
+            border: 1px solid {accent_hover};
+            color: {t["accent_fg"]};
+            font-weight: 700;
+        }}
+        QPushButton#PrimaryBtn:hover {{
+            background-color: {accent_hover};
+            color: {t["accent_fg"]};
+        }}
 QPushButton#DangerBtn {{
     background-color: #2A1215;
     border: 1px solid #991B1B;
@@ -299,89 +384,89 @@ QPushButton#DangerBtn:hover {{
     color: #FFFFFF;
 }}
 QPushButton#ProfileBtn {{
-    background-color: #1C1A29;
-    border: 1px solid #7C6DC4;
-    color: #EFEDFC;
+    background-color: {accent_soft};
+    border: 1px solid {accent_border};
+    color: #FFFFFF;
     padding: 5px 12px;
     border-radius: 14px;
     font-weight: 700;
 }}
 QPushButton#ProfileBtn:hover {{
-    background-color: #332C54;
-    border-color: #C6BEF0;
+    background-color: {bg_elevated};
+    border-color: {accent};
 }}
 QPushButton#SidebarToggleBtn {{
-    background-color: #16161F;
-    border: 1px solid #34314A;
-    color: #C6BEF0;
+    background-color: {bg_surface};
+    border: 1px solid {border};
+    color: #E4E4E7;
     padding: 4px 9px;
     border-radius: 6px;
     font-size: 11px;
     font-weight: 700;
 }}
 QPushButton#SidebarToggleBtn:hover {{
-    background-color: #26233A;
-    border-color: #9483E8;
+    background-color: {bg_elevated};
+    border-color: {accent};
     color: #FFFFFF;
 }}
 QPushButton#SidebarToggleBtn:checked {{
-    background-color: #282440;
-    border-color: #7F6DE0;
-    color: #EFEDFC;
+    background-color: {accent_soft};
+    border-color: {accent};
+    color: #FFFFFF;
 }}
 QFrame#CollapsedSidebarStrip {{
-    background-color: #101016;
-    border: 1px solid #22222C;
+    background-color: {bg_surface};
+    border: 1px solid {border};
     border-radius: 8px;
 }}
 QPushButton#EdgeArrowBtn {{
-    background-color: #181822;
-    border: 1px solid #34314A;
-    color: #C6BEF0;
+    background-color: {bg_surface};
+    border: 1px solid {border};
+    color: #E4E4E7;
     border-radius: 5px;
     padding: 0px;
     font-size: 11px;
     font-weight: 800;
 }}
 QPushButton#EdgeArrowBtn:hover {{
-    background-color: #3A3360;
-    border-color: #AFA2F2;
+    background-color: {accent_soft};
+    border-color: {accent};
     color: #FFFFFF;
 }}
 QPushButton#GearBtn {{
-    background-color: #191922;
-    border: 1px solid #2D2D3A;
-    color: #C6BEF0;
+    background-color: {bg_surface};
+    border: 1px solid {border};
+    color: #E4E4E7;
     font-size: 16px;
     font-weight: 700;
     padding: 4px 10px;
     border-radius: 6px;
 }}
 QPushButton#GearBtn:hover {{
-    background-color: #332C54;
-    border-color: #9483E8;
+    background-color: {bg_elevated};
+    border-color: {accent};
     color: #FFFFFF;
 }}
 QPushButton:checked {{
-    background-color: #433A70;
-    border-color: #AFA2F2;
+    background-color: {accent_soft};
+    border-color: {accent};
     color: #FFFFFF;
 }}
 QLineEdit, QSpinBox {{
-    background-color: #0F0F15;
-    border: 1px solid #2D2D3A;
+    background-color: {bg_surface};
+    border: 1px solid {border};
     border-radius: 8px;
     padding: 6px 10px;
     color: #FFFFFF;
-    selection-background-color: #6D5BD0;
+    selection-background-color: {accent};
 }}
 QLineEdit:focus, QSpinBox:focus {{
-    border-color: #9483E8;
-    background-color: #161620;
+    border-color: {accent};
+    background-color: {bg_elevated};
 }}
 QComboBox {{
-    background-color: #14141B;
-    border: 1px solid #363645;
+    background-color: {bg_surface};
+    border: 1px solid {border};
     border-radius: 8px;
     padding: 6px 30px 6px 10px;
     color: #FFFFFF;
@@ -389,12 +474,12 @@ QComboBox {{
     min-height: 20px;
 }}
 QComboBox:hover {{
-    border-color: #9483E8;
-    background-color: #1C1C27;
+    border-color: {accent};
+    background-color: {bg_elevated};
 }}
 QComboBox:on, QComboBox:focus {{
-    border-color: #AFA2F2;
-    background-color: #1C1C27;
+    border-color: {accent_hover};
+    background-color: {bg_elevated};
 }}
 QComboBox::drop-down {{
     subcontrol-origin: padding;
@@ -406,7 +491,7 @@ QComboBox::drop-down {{
     border-bottom-right-radius: 7px;
 }}
 QComboBox::drop-down:hover {{
-    background-color: #433A70;
+    background-color: {accent_soft};
 }}
 QComboBox::down-arrow {{
     image: url("{arrow_url}");
@@ -414,13 +499,13 @@ QComboBox::down-arrow {{
     height: 12px;
 }}
 QComboBox QAbstractItemView {{
-    background-color: #15151D;
-    border: 1px solid #363645;
+    background-color: {bg_surface};
+    border: 1px solid {border};
     border-radius: 6px;
     color: #F4F4F5;
     padding: 4px;
     outline: none;
-    selection-background-color: #51468A;
+    selection-background-color: {accent};
     selection-color: #FFFFFF;
 }}
 QComboBox QAbstractItemView::item {{
@@ -428,14 +513,14 @@ QComboBox QAbstractItemView::item {{
     padding: 4px 10px;
     border-radius: 4px;
     color: #F4F4F5;
-    background-color: #15151D;
+    background-color: {bg_surface};
 }}
 QComboBox QAbstractItemView::item:hover {{
-    background-color: #2A2545;
+    background-color: {bg_elevated};
     color: #FFFFFF;
 }}
 QComboBox QAbstractItemView::item:selected {{
-    background-color: #51468A;
+    background-color: {accent};
     color: #FFFFFF;
 }}
 QCheckBox {{
@@ -447,16 +532,16 @@ QCheckBox::indicator {{
     width: 16px;
     height: 16px;
     border-radius: 4px;
-    border: 1px solid #4A4A5C;
-    background-color: #0F0F15;
+    border: 1px solid {border};
+    background-color: {bg_surface};
 }}
 QCheckBox::indicator:checked {{
-    background-color: #6D5BD0;
-    border-color: #C6BEF0;
+    background-color: {accent};
+    border-color: {accent_hover};
 }}
 QListWidget {{
     background-color: transparent;
-    border: 1px solid #22222C;
+    border: 1px solid {border};
     border-radius: 8px;
     padding: 4px;
     outline: none;
@@ -468,16 +553,16 @@ QListWidget::item {{
     color: #E4E4E7;
 }}
 QListWidget::item:hover {{
-    background-color: #1D1C29;
+    background-color: {bg_elevated};
     color: #FFFFFF;
 }}
 QListWidget::item:selected {{
-    background-color: #3A3360;
+    background-color: {accent_soft};
     color: #FFFFFF;
-    border-left: 3px solid #AFA2F2;
+    border-left: 3px solid {accent};
 }}
 QTabWidget::pane {{
-    border: 1px solid #22222C;
+    border: 1px solid {border};
     border-radius: 6px;
     background-color: transparent;
 }}
@@ -493,47 +578,48 @@ QTabBar::tab {{
 }}
 QTabBar::tab:hover {{
     color: #F4F4F5;
-    background-color: #1C1C26;
+    background-color: {bg_elevated};
 }}
 QTabBar::tab:selected {{
-    background-color: #252138;
-    color: #EFEDFC;
-    border-bottom: 2px solid #AFA2F2;
+    background-color: {accent_soft};
+    color: #FFFFFF;
+    border-bottom: 2px solid {accent};
 }}
 QSlider::groove:horizontal {{
     height: 4px;
-    background: #2A2A36;
+    background: {border};
     border-radius: 2px;
 }}
 QSlider::handle:horizontal {{
-    background: #EFEDFC;
-    width: 14px;
-    height: 14px;
+    background: #FFFFFF;
+    border: 2px solid {accent};
+    width: 12px;
+    height: 12px;
     margin: -5px 0;
     border-radius: 7px;
 }}
 QProgressBar {{
-    background-color: #161620;
-    border: 1px solid #2A2A36;
+    background-color: {bg_surface};
+    border: 1px solid {border};
     border-radius: 4px;
     height: 8px;
     text-align: center;
 }}
 QProgressBar::chunk {{
-    background-color: #9483E8;
+    background-color: {accent};
     border-radius: 3px;
 }}
 QToolTip {{
-    background-color: #181424;
+    background-color: {bg_elevated};
     color: #F4F4F5;
-    border: 1px solid #363645;
+    border: 1px solid {accent_border};
     padding: 6px 8px;
     border-radius: 6px;
     font-size: 12px;
 }}
 QMenu {{
-    background-color: #15151D;
-    border: 1px solid #363645;
+    background-color: {bg_surface};
+    border: 1px solid {border};
     color: #F4F4F5;
     padding: 4px;
 }}
@@ -542,21 +628,21 @@ QMenu::item {{
     border-radius: 4px;
 }}
 QMenu::item:selected {{
-    background-color: #433A70;
+    background-color: {accent_soft};
     color: #FFFFFF;
 }}
 QScrollBar:vertical {{
-    background: #0B0B0F;
+    background: {bg_base};
     width: 8px;
     margin: 0px;
 }}
 QScrollBar::handle:vertical {{
-    background: #2D2D3A;
+    background: {border};
     border-radius: 4px;
     min-height: 24px;
 }}
 QScrollBar::handle:vertical:hover {{
-    background: #7C6DC4;
+    background: {accent};
 }}
 QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{
     height: 0px;
@@ -566,7 +652,7 @@ QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {{
     background: transparent;
 }}
 QSlider::sub-page:horizontal {{
-    background: #7F6DE0;
+    background: {accent};
     border-radius: 2px;
 }}
 QScrollBar:horizontal {{
@@ -575,12 +661,12 @@ QScrollBar:horizontal {{
     margin: 0px;
 }}
 QScrollBar::handle:horizontal {{
-    background: #2D2D3A;
+    background: {border};
     border-radius: 4px;
     min-width: 24px;
 }}
 QScrollBar::handle:horizontal:hover {{
-    background: #7C6DC4;
+    background: {accent};
 }}
 QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {{
     width: 0px;
@@ -593,6 +679,7 @@ QScrollBar::add-page:horizontal, QScrollBar::sub-page:horizontal {{
 
 
 DEFAULT_STUDIO_SETTINGS = {
+    "theme": "purple",
     "font_family": "SF Pro",
     "font_size": 15,
     "font_bold": True,
@@ -657,10 +744,14 @@ def register_local_fonts() -> list[str]:
                 if fid != -1:
                     loaded_families.extend(QFontDatabase.applicationFontFamilies(fid))
 
-    QFont.insertSubstitutions(
-        "SF Pro",
-        ["SF Pro Display", "SF Pro Text", "San Francisco", "Segoe UI", "Inter", "Arial"],
+    primary_ui_family = "SF Pro Display" if "SF Pro Display" in loaded_families else (
+        loaded_families[0] if loaded_families else "SF Pro Display"
     )
+    for alias in ("SF-Pro-Display-Regular", "SF Pro", "SF Pro Display"):
+        QFont.insertSubstitutions(
+            alias,
+            [primary_ui_family, "SF Pro Display", "SF Pro Text", "San Francisco", "Segoe UI", "Inter", "Arial"],
+        )
     return sorted(list(set(loaded_families)))
 
 
@@ -764,7 +855,7 @@ class RatingRingWidget(QWidget):
             p.drawArc(rect, 90 * 16, span_angle)
 
         p.setPen(QColor("#FFFFFF"))
-        num_font = safe_qfont("Segoe UI", max(13, int(w * 0.21)), bold=True)
+        num_font = safe_qfont("SF-Pro-Display-Regular", max(13, int(w * 0.21)), bold=True)
         p.setFont(num_font)
         p.drawText(rect, Qt.AlignCenter, f"{round(self.current_val)}%")
 
@@ -825,9 +916,12 @@ class LyricRatingDialog(QDialog):
         bars_grid.setContentsMargins(14, 12, 14, 12)
         bars_grid.setSpacing(10)
 
+        theme_id = getattr(self.parent(), "studio_settings", {}).get("theme", "purple")
+        t = get_theme_palette(theme_id)
+
         bd = self.data["breakdown"]
         categories = [
-            ("🔥 Rhyme Density (40%)", bd["multies"], "#9483E8"),
+            ("🔥 Rhyme Density (40%)", bd["multies"], t["accent"]),
             ("🌊 Flow & Cadence Pocket (27%)", bd["flow"], "#38BDF8"),
             ("🏗 Song Structure & Sections (20%)", bd["structure"], "#34D399"),
             ("🧠 Vocabulary & Bilingual Mix (13%)", bd["vocab"], "#FBBF24"),
@@ -841,7 +935,7 @@ class LyricRatingDialog(QDialog):
             pbar.setTextVisible(False)
             pbar.setFixedHeight(8)
             pbar.setStyleSheet(f"""
-                QProgressBar {{ background-color: #191922; border: 1px solid #2A2A36; border-radius: 4px; }}
+                QProgressBar {{ background-color: {t["bg_base"]}; border: 1px solid {t["border"]}; border-radius: 4px; }}
                 QProgressBar::chunk {{ background-color: {col_hex}; border-radius: 3px; }}
             """)
             pct = QLabel(f"{val}%")
@@ -859,6 +953,13 @@ class LyricRatingDialog(QDialog):
         self.hl_list = QListWidget()
         self.hl_list.setMinimumHeight(115)
         self.hl_list.setMaximumHeight(145)
+        self.hl_list.setStyleSheet(f"""
+            QListWidget::item:selected {{
+                background-color: {t["accent"]};
+                color: {t["accent_fg"]};
+                font-weight: 700;
+            }}
+        """)
         if self.data["highlights"]:
             for h in self.data["highlights"]:
                 item = QListWidgetItem(f"{h['badge']}   —   {h['detail']}")
@@ -874,21 +975,33 @@ class LyricRatingDialog(QDialog):
         tips_box.setReadOnly(True)
         tips_box.setMinimumHeight(80)
         tips_box.setMaximumHeight(100)
-        tips_box.setStyleSheet("""
-            QPlainTextEdit {
-                background-color: #110D1B;
-                border: 1px solid #3A3360;
+        tips_box.setStyleSheet(f"""
+            QPlainTextEdit {{
+                background-color: {t["bg_surface"]};
+                border: 1px solid {t["accent_border"]};
                 border-radius: 6px;
-                color: #EFEDFC;
+                color: #F4F4F5;
                 font-size: 12px;
                 padding: 8px;
-            }
+            }}
         """)
-        tips_box.setPlainText("\n".join(f"• {t}" for t in self.data["tips"]))
+        tips_box.setPlainText("\n".join(f"• {tip}" for tip in self.data["tips"]))
         layout.addWidget(tips_box)
 
         btn_close = QPushButton("Back to Lyric Canvas")
         btn_close.setObjectName("PrimaryBtn")
+        btn_close.setStyleSheet(f"""
+            QPushButton {{
+                background-color: {t["accent"]};
+                border: 1px solid {t["accent_hover"]};
+                color: {t["accent_fg"]};
+                font-weight: 700;
+            }}
+            QPushButton:hover {{
+                background-color: {t["accent_hover"]};
+                color: {t["accent_fg"]};
+            }}
+        """)
         btn_close.clicked.connect(self.accept)
         layout.addWidget(btn_close, alignment=Qt.AlignRight)
 
@@ -1422,7 +1535,7 @@ def build_circular_avatar_pixmap(
 
         initials = "".join([part[0].upper() for part in prof_name.replace("_", " ").split()[:2]]) or "NX"
         painter.setPen(QColor("#FFFFFF"))
-        font = safe_qfont("Segoe UI", max(8, int(size * 0.34)), bold=True)
+        font = safe_qfont("SF-Pro-Display-Regular", max(8, int(size * 0.34)), bold=True)
         painter.setFont(font)
         painter.drawText(QRectF(0, 0, size, size), Qt.AlignCenter, initials)
 
@@ -1903,6 +2016,28 @@ class NocturneSettingsDialog(QDialog):
         ws_form.setContentsMargins(16, 16, 16, 16)
         ws_form.setSpacing(12)
 
+        self.theme_combo = QComboBox()
+        for tid, tdata in NOCTURNE_THEMES.items():
+            self.theme_combo.addItem(tdata["name"], tid)
+
+        custom_dict = globals().get("CUSTOM_THEMES", {})
+        for tid, tdata in sorted(custom_dict.items()):
+            if tid not in NOCTURNE_THEMES:
+                t_name = tdata.get("name") or tid.replace("_", " ").title()
+                self.theme_combo.addItem(f"{t_name} (CUSTOM THEME)", tid)
+
+        active_tid = str(self.settings.get("theme", "purple")).strip().lower()
+        cur_theme_idx = self.theme_combo.findData(active_tid)
+        if cur_theme_idx < 0 and active_tid:
+            pal = get_theme_palette(active_tid)
+            t_name = pal.get("name") or active_tid.replace("_", " ").title()
+            self.theme_combo.addItem(f"{t_name} (CUSTOM THEME)", active_tid)
+            cur_theme_idx = self.theme_combo.count() - 1
+
+        if cur_theme_idx >= 0:
+            self.theme_combo.setCurrentIndex(cur_theme_idx)
+        ws_form.addRow("Studio Color Theme:", self.theme_combo)
+
         self.autosave_combo = QComboBox()
         self.autosave_combo.addItem("Off (Manual Save Only)", 0)
         self.autosave_combo.addItem("Every 30 Seconds", 30)
@@ -1990,6 +2125,7 @@ class NocturneSettingsDialog(QDialog):
     def save_and_apply(self):
         chosen_font = self.font_combo.currentText() or "SF Pro"
         self.settings.update({
+            "theme": self.theme_combo.currentData() or "purple",
             "font_family": chosen_font,
             "font_size": self.font_size_spin.value(),
             "font_bold": self.chk_bold.isChecked(),
@@ -2458,8 +2594,97 @@ class ProfileLauncherDialog(QDialog):
             QMessageBox.critical(self, "Restore Failed", str(e))
 
 
+GITHUB_THEMES_REPO = "muhdrasydan99/nocturne-addon-lib"  # Contoh: "aden/nocturne-themes"
+GITHUB_THEMES_PATH = "themes"  # Biarkan "" jika fail .json di root repo, atau isi "themes" jika dalam folder themes/
+
+CUSTOM_THEMES_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "custom_themes.json")
+CUSTOM_THEMES: dict[str, dict] = {}
+
+REQUIRED_THEME_KEYS = (
+    "bg_base", "bg_surface", "bg_elevated", "border",
+    "accent", "accent_hover", "accent_soft", "accent_border"
+)
+
+def load_custom_themes_from_disk():
+    global CUSTOM_THEMES
+    if os.path.exists(CUSTOM_THEMES_FILE):
+        try:
+            with open(CUSTOM_THEMES_FILE, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            if isinstance(data, dict):
+                CUSTOM_THEMES = data
+        except Exception:
+            pass
+
+def save_custom_themes_to_disk():
+    try:
+        with open(CUSTOM_THEMES_FILE, "w", encoding="utf-8") as f:
+            json.dump(CUSTOM_THEMES, f, indent=2)
+    except Exception:
+        pass
+
+load_custom_themes_from_disk()
+
+
+class GitHubThemeWorker(QThread):
+    list_ready = Signal(list)
+    theme_ready = Signal(str, dict)
+    failed = Signal(str)
+
+    def __init__(self, mode: str, repo: str = "", folder: str = "", url: str = "", fallback_id: str = ""):
+        super().__init__()
+        self.mode = mode
+        self.repo = repo.strip()
+        self.folder = folder.strip("/")
+        self.url = url
+        self.fallback_id = fallback_id
+
+    def _fetch_json(self, url: str):
+        import urllib.request
+        req = urllib.request.Request(url, headers={"User-Agent": "Nocturne-Lyric-DAW"})
+        with urllib.request.urlopen(req, timeout=12) as resp:
+            return json.loads(resp.read().decode("utf-8"))
+
+    def run(self):
+        try:
+            if self.mode == "list":
+                sub = f"/{self.folder}" if self.folder else ""
+                api_url = f"https://api.github.com/repos/{self.repo}/contents{sub}"
+                items = self._fetch_json(api_url)
+                if not isinstance(items, list):
+                    self.failed.emit("Repository path did not return a file list.")
+                    return
+                themes = []
+                for it in items:
+                    name = it.get("name", "")
+                    if it.get("type") == "file" and name.lower().endswith(".json"):
+                        themes.append({
+                            "id": os.path.splitext(name)[0].lower().replace(" ", "_"),
+                            "filename": name,
+                            "download_url": it.get("download_url", ""),
+                            "size_kb": round(it.get("size", 0) / 1024.0, 1),
+                        })
+                self.list_ready.emit(themes)
+
+            elif self.mode == "download":
+                data = self._fetch_json(self.url)
+                if not isinstance(data, dict):
+                    self.failed.emit("Invalid theme JSON format.")
+                    return
+                missing = [k for k in REQUIRED_THEME_KEYS if k not in data]
+                if missing:
+                    self.failed.emit(f"Theme JSON missing required keys: {', '.join(missing)}")
+                    return
+                theme_id = str(data.get("id") or self.fallback_id).strip().lower().replace(" ", "_")
+                data["id"] = theme_id
+                data.setdefault("name", theme_id.replace("_", " ").title())
+                self.theme_ready.emit(theme_id, data)
+        except Exception as e:
+            self.failed.emit(str(e))
+
+
 # =====================================================================
-# CUSTOM SLANG & ONLINE LANGUAGE ADD-ON LIBRARY DIALOG
+# ADD-ON LIBRARY DIALOG
 # =====================================================================
 class LexiconManagerDialog(QDialog):
     def __init__(self, parent, on_updated_callback):
@@ -2467,6 +2692,7 @@ class LexiconManagerDialog(QDialog):
         self.on_updated = on_updated_callback
         self.dl_worker = None
         self.search_worker = None
+        self.theme_worker = None
         self.gh_repos = []
         self.gh_files = []
 
@@ -2555,7 +2781,7 @@ class LexiconManagerDialog(QDialog):
         form_row = QHBoxLayout()
         self.slang_word_input = QLineEdit()
         self.slang_word_input.setPlaceholderText("Slang word (e.g. kacip, on lock, tapau)")
-        self.slang_tag_input = QLineEdit("CUSTOM SLANG")
+        self.slang_tag_input = QLineEdit("Custom Slang")
         self.slang_tag_input.setFixedWidth(145)
         form_row.addWidget(self.slang_word_input)
         form_row.addWidget(self.slang_tag_input)
@@ -2579,7 +2805,7 @@ class LexiconManagerDialog(QDialog):
         btn_del_slang.clicked.connect(self.delete_selected_slang)
         s_layout.addWidget(btn_del_slang, alignment=Qt.AlignRight)
 
-        tabs.addTab(slang_tab, "Custom Slang")
+        tabs.addTab(slang_tab, "🗣 Custom Slang")
 
         # --- TAB 3: INSTALLED & LOCAL IMPORT ---
         pack_tab = QWidget()
@@ -2623,7 +2849,60 @@ class LexiconManagerDialog(QDialog):
         pack_actions.addWidget(btn_del_pack)
         p_layout.addLayout(pack_actions)
 
-        tabs.addTab(pack_tab, "Installed & Local Packs")
+        tabs.addTab(pack_tab, "📥 Rhyme Packs")
+
+        # --- TAB 4: APP THEMES (GITHUB & LOCAL) ---
+        theme_tab = QWidget()
+        t_layout = QVBoxLayout(theme_tab)
+        t_layout.setSpacing(10)
+
+        t_layout.addWidget(QLabel("DOWNLOAD THEMES FROM GITHUB", objectName="SectionHeader"))
+        gh_theme_top = QHBoxLayout()
+        self.theme_repo_input = QLineEdit(GITHUB_THEMES_REPO)
+        self.theme_repo_input.setPlaceholderText("owner/repo (e.g. adan/nocturne-themes)")
+        btn_fetch_themes = QPushButton("↻ Fetch Themes")
+        btn_fetch_themes.setObjectName("PrimaryBtn")
+        btn_fetch_themes.clicked.connect(self.fetch_github_themes)
+        gh_theme_top.addWidget(self.theme_repo_input, 1)
+        gh_theme_top.addWidget(btn_fetch_themes)
+        t_layout.addLayout(gh_theme_top)
+
+        self.gh_themes_list = QListWidget()
+        self.gh_themes_list.setMaximumHeight(165)
+        self.gh_themes_list.itemDoubleClicked.connect(self.download_selected_github_theme)
+        t_layout.addWidget(self.gh_themes_list)
+
+        gh_theme_act = QHBoxLayout()
+        self.theme_status_lbl = QLabel("Click 'Fetch Themes' to load themes from GitHub.")
+        self.theme_status_lbl.setTextFormat(Qt.PlainText)
+        self.theme_status_lbl.setStyleSheet("color: #B4B4BE; font-size: 11px;")
+        btn_dl_apply_theme = QPushButton("Download and Apply Theme")
+        btn_dl_apply_theme.setObjectName("PrimaryBtn")
+        btn_dl_apply_theme.clicked.connect(self.download_selected_github_theme)
+        gh_theme_act.addWidget(self.theme_status_lbl, 1)
+        gh_theme_act.addWidget(btn_dl_apply_theme)
+        t_layout.addLayout(gh_theme_act)
+
+        t_layout.addWidget(QLabel("DOWNLOADED / CUSTOM THEMES", objectName="SectionHeader"))
+        self.installed_themes_list = QListWidget()
+        self.installed_themes_list.itemDoubleClicked.connect(self.apply_selected_installed_theme)
+        t_layout.addWidget(self.installed_themes_list)
+
+        local_theme_act = QHBoxLayout()
+        btn_import_theme = QPushButton("📂 Import Local Theme .JSON")
+        btn_import_theme.clicked.connect(self.import_local_theme_json)
+        btn_apply_theme = QPushButton("✨ Apply Selected Theme")
+        btn_apply_theme.setObjectName("PrimaryBtn")
+        btn_apply_theme.clicked.connect(self.apply_selected_installed_theme)
+        btn_del_theme = QPushButton("Delete Theme")
+        btn_del_theme.clicked.connect(self.delete_selected_theme)
+        local_theme_act.addWidget(btn_import_theme)
+        local_theme_act.addStretch()
+        local_theme_act.addWidget(btn_apply_theme)
+        local_theme_act.addWidget(btn_del_theme)
+        t_layout.addLayout(local_theme_act)
+
+        tabs.addTab(theme_tab, "🎨 App Themes")
         layout.addWidget(tabs)
 
     def filter_curated_catalog(self, query: str):
@@ -2737,6 +3016,7 @@ class LexiconManagerDialog(QDialog):
             item = QListWidgetItem(f"[{status}]  {pname}  ({count:,} words)")
             item.setData(Qt.UserRole, pname)
             self.packs_list.addItem(item)
+        self._refresh_installed_themes_list()
 
     def add_slang(self):
         w = self.slang_word_input.text().strip()
@@ -2806,8 +3086,116 @@ class LexiconManagerDialog(QDialog):
         self.refresh_lists()
         self.on_updated()
 
+    def _refresh_installed_themes_list(self):
+        if not hasattr(self, "installed_themes_list"):
+            return
+        self.installed_themes_list.clear()
+        active_id = getattr(self.parent(), "studio_settings", {}).get("theme", "purple")
+        for tid, pal in sorted(CUSTOM_THEMES.items()):
+            mark = "  [ACTIVE]" if tid == active_id else ""
+            label = f"🎨  {pal.get('name', tid)}  ({tid}){mark}"
+            item = QListWidgetItem(label)
+            item.setData(Qt.UserRole, tid)
+            self.installed_themes_list.addItem(item)
+
+    def fetch_github_themes(self):
+        repo = self.theme_repo_input.text().strip()
+        if not repo or "/" not in repo:
+            QMessageBox.warning(self, "Invalid Repo", "Enter a valid GitHub repo in 'owner/repo' format.")
+            return
+        if self.theme_worker and self.theme_worker.isRunning():
+            return
+        self.theme_status_lbl.setText(f"Fetching themes from {repo}...")
+        self.gh_themes_list.clear()
+        self.theme_worker = GitHubThemeWorker("list", repo=repo, folder=GITHUB_THEMES_PATH)
+        self.theme_worker.list_ready.connect(self._on_github_themes_listed)
+        self.theme_worker.failed.connect(self._on_theme_worker_failed)
+        self.theme_worker.start()
+
+    def _on_github_themes_listed(self, themes: list):
+        if not themes:
+            self.theme_status_lbl.setText("No .json theme files found in that repository.")
+            return
+        self.theme_status_lbl.setText(f"Found {len(themes)} theme(s) — Double-click or click Download & Apply.")
+        for th in themes:
+            item = QListWidgetItem(f"🎨  {th['filename']}  ({th['size_kb']} KB)")
+            item.setData(Qt.UserRole, th)
+            self.gh_themes_list.addItem(item)
+
+    def download_selected_github_theme(self):
+        item = self.gh_themes_list.currentItem()
+        if not item:
+            QMessageBox.information(self, "Select Theme", "Select a theme from the GitHub list first.")
+            return
+        if self.theme_worker and self.theme_worker.isRunning():
+            return
+        th = item.data(Qt.UserRole)
+        self.theme_status_lbl.setText(f"Downloading {th['filename']}...")
+        self.theme_worker = GitHubThemeWorker(
+            "download", url=th["download_url"], fallback_id=th["id"]
+        )
+        self.theme_worker.theme_ready.connect(self._on_theme_downloaded_and_apply)
+        self.theme_worker.failed.connect(self._on_theme_worker_failed)
+        self.theme_worker.start()
+
+    def _on_theme_downloaded_and_apply(self, theme_id: str, palette: dict):
+        CUSTOM_THEMES[theme_id] = palette
+        save_custom_themes_to_disk()
+        self.theme_status_lbl.setText(f"✅ Installed & applied '{palette.get('name', theme_id)}'!")
+        self._apply_theme_to_main(theme_id)
+        self._refresh_installed_themes_list()
+
+    def _on_theme_worker_failed(self, err: str):
+        self.theme_status_lbl.setText("❌ Failed to fetch theme.")
+        QMessageBox.warning(self, "Theme Error", f"Could not load theme:\n{err}")
+
+    def _apply_theme_to_main(self, theme_id: str):
+        main_win = self.parent()
+        if main_win and hasattr(main_win, "apply_studio_settings"):
+            main_win.apply_studio_settings({"theme": theme_id})
+
+    def apply_selected_installed_theme(self):
+        item = self.installed_themes_list.currentItem()
+        if not item:
+            return
+        tid = item.data(Qt.UserRole)
+        self._apply_theme_to_main(tid)
+        self._refresh_installed_themes_list()
+
+    def import_local_theme_json(self):
+        path, _ = QFileDialog.getOpenFileName(self, "Import Theme JSON", "", "JSON Files (*.json)")
+        if not path:
+            return
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            missing = [k for k in REQUIRED_THEME_KEYS if k not in data]
+            if missing:
+                QMessageBox.warning(self, "Invalid Theme", f"Missing keys: {', '.join(missing)}")
+                return
+            tid = str(data.get("id") or os.path.splitext(os.path.basename(path))[0]).lower().replace(" ", "_")
+            data["id"] = tid
+            data.setdefault("name", tid.replace("_", " ").title())
+            CUSTOM_THEMES[tid] = data
+            save_custom_themes_to_disk()
+            self._apply_theme_to_main(tid)
+            self._refresh_installed_themes_list()
+        except Exception as e:
+            QMessageBox.warning(self, "Import Error", str(e))
+
+    def delete_selected_theme(self):
+        item = self.installed_themes_list.currentItem()
+        if not item:
+            return
+        tid = item.data(Qt.UserRole)
+        CUSTOM_THEMES.pop(tid, None)
+        save_custom_themes_to_disk()
+        if getattr(self.parent(), "studio_settings", {}).get("theme") == tid:
+            self._apply_theme_to_main("purple")
+        self._refresh_installed_themes_list()
+
     def closeEvent(self, event):
-        for worker in (self.dl_worker, self.search_worker):
+        for worker in (self.dl_worker, self.search_worker, self.theme_worker):
             if worker is not None and worker.isRunning():
                 worker.quit()
                 if not worker.wait(1200):
@@ -3009,14 +3397,16 @@ class LyricEditor(QPlainTextEdit):
         bold = self.cfg.get("font_bold", True)
         word_wrap = self.cfg.get("word_wrap", True)
 
-        self.setStyleSheet("""
-            QPlainTextEdit {
-                background-color: #0B0B0F;
+        t = get_theme_palette(self.cfg.get("theme", "purple"))
+        self.setStyleSheet(f"""
+            QPlainTextEdit {{
+                background-color: {t["bg_base"]};
                 color: #F4F4F5;
                 border: none;
                 padding-left: 14px;
-                selection-background-color: #51468A;
-            }
+                selection-background-color: {t["accent"]};
+                selection-color: #FFFFFF;
+            }}
         """)
 
         font = safe_qfont(font_family, size, bold=bold)
@@ -3027,6 +3417,8 @@ class LyricEditor(QPlainTextEdit):
         self.analysis_timer.setInterval(self.cfg.get("debounce_ms", 200))
         self.gutter.setVisible(self.cfg.get("show_gutter", True))
         self.update_gutter_width(0)
+        self.gutter.update()
+        self.highlight_current_line()
         self.run_analysis()
 
     def set_editor_font_size(self, size: int):
@@ -3072,10 +3464,11 @@ class LyricEditor(QPlainTextEdit):
     def paint_gutter(self, event):
         if not self.cfg.get("show_gutter", True):
             return
+        t = get_theme_palette(self.cfg.get("theme", "purple"))
         painter = QPainter(self.gutter)
-        painter.fillRect(event.rect(), QColor("#0B0B0F"))
+        painter.fillRect(event.rect(), QColor(t["bg_base"]))
 
-        painter.setPen(QColor("#22222C"))
+        painter.setPen(QColor(t["border"]))
         painter.drawLine(self.gutter.width() - 1, event.rect().top(), self.gutter.width() - 1, event.rect().bottom())
 
         block = self.firstVisibleBlock()
@@ -3100,7 +3493,7 @@ class LyricEditor(QPlainTextEdit):
                     if prev_syl and abs(syl - prev_syl) >= warn_thresh:
                         painter.setPen(QColor("#FBBF24"))
                     else:
-                        painter.setPen(QColor("#AFA2F2"))
+                        painter.setPen(QColor(t["accent_hover"]))
                     painter.drawText(
                         0, top, self.gutter.width() - 10,
                         line_h,
@@ -3256,8 +3649,9 @@ class LyricEditor(QPlainTextEdit):
             dim_all_sel.format.setForeground(QColor("#525260"))
             selections.append(dim_all_sel)
 
+        t = get_theme_palette(self.cfg.get("theme", "purple"))
         hdr_fmt = QTextCharFormat()
-        hdr_fmt.setForeground(QColor("#C6BEF0"))
+        hdr_fmt.setForeground(QColor(t["accent_hover"]))
         hdr_fmt.setFontWeight(QFont.Bold)
 
         ts_fmt = QTextCharFormat()
@@ -3345,8 +3739,9 @@ class LyricEditor(QPlainTextEdit):
         self._cached_static_selections = selections
 
     def apply_visual_highlights(self):
+        t = get_theme_palette(self.cfg.get("theme", "purple"))
         line_sel = QTextEdit.ExtraSelection()
-        line_sel.format.setBackground(QColor("#14141B"))
+        line_sel.format.setBackground(QColor(t["bg_surface"]))
         if self.solo_rhyme_group is not None:
             line_sel.format.setForeground(QColor("#525260"))
         line_sel.format.setProperty(QTextFormat.FullWidthSelection, True)
@@ -3518,25 +3913,25 @@ class LyricEditor(QPlainTextEdit):
         self._structure_popup.setVisible(False)
         self._structure_popup.setStyleSheet("""
             QListWidget {
-                background-color: #14121E;
-                border: 1px solid #9483E8;
+                background-color: {t["bg_base"]};
+                border: 1px solid {t["accent"]};
                 border-radius: 8px;
                 padding: 4px;
                 outline: none;
             }
             QListWidget::item {
-                color: #E2DEF8;
+                color: {t["accent"]};
                 font-size: 12px;
                 font-weight: 700;
                 padding: 5px 10px;
                 border-radius: 5px;
             }
             QListWidget::item:hover {
-                background-color: #23212F;
+                background-color: {t["accent_hover"]};
                 color: #FFFFFF;
             }
             QListWidget::item:selected {
-                background-color: #51468A;
+                background-color: {t["accent_soft"]};
                 color: #FFFFFF;
             }
         """)
@@ -4222,13 +4617,17 @@ class BeatSeekBar(QWidget):
         p.setBrush(QColor("#22222C"))
         p.drawRoundedRect(track_rect, 3.0, 3.0)
 
+        win = self.window()
+        theme_id = getattr(win, "studio_settings", {}).get("theme", "purple")
+        t = get_theme_palette(theme_id)
+
         # Played fill
         if self.duration_ms > 0 and self.position_ms > 0:
             cur_x = self._ms_to_x(self.position_ms)
             fill_rect = QRectF(pad, cy - track_h / 2.0, max(0.0, cur_x - pad), track_h)
             grad = QLinearGradient(pad, 0, cur_x, 0)
-            grad.setColorAt(0.0, QColor("#6D5BD0"))
-            grad.setColorAt(1.0, QColor("#AFA2F2"))
+            grad.setColorAt(0.0, QColor(t["accent"]))
+            grad.setColorAt(1.0, QColor(t["accent_hover"]))
             p.setBrush(QBrush(grad))
             p.drawRoundedRect(fill_rect, 3.0, 3.0)
 
@@ -4244,8 +4643,8 @@ class BeatSeekBar(QWidget):
 
         # Playhead knob
         head_x = self._ms_to_x(self.position_ms)
-        p.setPen(QPen(QColor("#EFEDFC"), 1.5))
-        p.setBrush(QColor("#9483E8"))
+        p.setPen(QPen(QColor("#FFFFFF"), 1.5))
+        p.setBrush(QColor(t["accent"]))
         p.drawEllipse(QPointF(head_x, cy), 5.5, 5.5)
 
 
@@ -4272,45 +4671,46 @@ class FullScreenLyricPreviewDialog(QDialog):
         QShortcut(QKeySequence("Space"), self).activated.connect(self._toggle_auto_scroll)
 
     def _build_ui(self):
-        self.setStyleSheet("""
-            QDialog {
-                background-color: #0B0B0F;
-            }
-            QPushButton {
-                background-color: #161421;
-                border: 1px solid #2A2938;
+        t = get_theme_palette(self.main_win.studio_settings.get("theme", "purple"))
+        self.setStyleSheet(f"""
+            QDialog {{
+                background-color: {t["bg_base"]};
+            }}
+            QPushButton {{
+                background-color: {t["bg_surface"]};
+                border: 1px solid {t["border"]};
                 color: #E4E4E7;
                 border-radius: 16px;
                 padding: 6px 14px;
                 font-size: 12px;
                 font-weight: 700;
-            }
-            QPushButton:hover {
-                background-color: #251B38;
-                border-color: #9483E8;
+            }}
+            QPushButton:hover {{
+                background-color: {t["bg_elevated"]};
+                border-color: {t["accent"]};
                 color: #FFFFFF;
-            }
-            QPushButton:checked {
-                background-color: #51468A;
-                border-color: #AFA2F2;
+            }}
+            QPushButton:checked {{
+                background-color: {t["accent_soft"]};
+                border-color: {t["accent"]};
                 color: #FFFFFF;
-            }
-            QSlider::groove:horizontal {
+            }}
+            QSlider::groove:horizontal {{
                 height: 4px;
-                background: #272235;
+                background: {t["border"]};
                 border-radius: 2px;
-            }
-            QSlider::handle:horizontal {
-                background: #AFA2F2;
+            }}
+            QSlider::handle:horizontal {{
+                background: {t["accent_hover"]};
                 width: 14px;
                 height: 14px;
                 margin: -5px 0;
                 border-radius: 7px;
-            }
-            QSlider::sub-page:horizontal {
-                background: #7F6DE0;
+            }}
+            QSlider::sub-page:horizontal {{
+                background: {t["accent"]};
                 border-radius: 2px;
-            }
+            }}
         """)
 
         root = QVBoxLayout(self)
@@ -4334,7 +4734,7 @@ class FullScreenLyricPreviewDialog(QDialog):
 
         self.lbl_sub_meta = QLabel(f"{self.main_win.profile_name}  •  {bpm_val} BPM")
         self.lbl_sub_meta.setTextFormat(Qt.PlainText)
-        self.lbl_sub_meta.setStyleSheet("color: #A78BFA; font-size: 12px; font-weight: 600;")
+        self.lbl_sub_meta.setStyleSheet(f"color: {t['accent_hover']}; font-size: 12px; font-weight: 600;")
         title_col.addWidget(self.lbl_sub_meta)
 
         top_bar.addLayout(title_col)
@@ -4364,13 +4764,19 @@ class FullScreenLyricPreviewDialog(QDialog):
         self.viewer.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self.viewer.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self.viewer.setMaximumWidth(920)
-        self.viewer.setStyleSheet("""
-            QTextBrowser {
+        self.viewer.setStyleSheet(f"""
+            QTextBrowser {{
                 background-color: transparent;
                 border: none;
-                selection-background-color: #51468A;
-            }
+                selection-background-color: {t["accent"]};
+                selection-color: #FFFFFF;
+            }}
         """)
+        from PySide6.QtGui import QPalette
+        pal = self.viewer.palette()
+        pal.setColor(QPalette.Highlight, QColor(t["accent"]))
+        pal.setColor(QPalette.HighlightedText, QColor("#FFFFFF"))
+        self.viewer.setPalette(pal)
         stage_row.addWidget(self.viewer, 6)
         stage_row.addStretch(1)
 
@@ -4430,6 +4836,7 @@ class FullScreenLyricPreviewDialog(QDialog):
 
         lyrics = self.main_win.lyric_editor.toPlainText()
         cfg = self.main_win.studio_settings
+        t = get_theme_palette(cfg.get("theme", "purple"))
         ui_font = html_mod.escape(cfg.get("font_family", "SF Pro"))
         base_size = max(20, int(cfg.get("font_size", 15) or 15) + 8)
         rhyme_win = cfg.get("rhyme_window", 4)
@@ -4471,7 +4878,7 @@ class FullScreenLyricPreviewDialog(QDialog):
 
             if is_header:
                 blocks.append(
-                    f'<div style="color:#AFA2F2; font-size:{max(14, base_size - 7)}pt; font-weight:800; '
+                    f'<div style="color:{t["accent_hover"]}; font-size:{max(14, base_size - 7)}pt; font-weight:800; '
                     f'letter-spacing:1px; margin-top:20px; margin-bottom:8px;">'
                     f'{html_mod.escape(stripped)}'
                     f'</div>'
@@ -4540,7 +4947,7 @@ class FullScreenLyricPreviewDialog(QDialog):
 
         html_doc = f"""
         <html>
-        <body style="background-color:#0B0B0F; color:#F4F4F5; font-family:'{ui_font}', 'Segoe UI', sans-serif; margin:0; padding:0;">
+        <body style="background-color:{t['bg_base']}; color:#F4F4F5; font-family:'{ui_font}', 'Segoe UI', sans-serif; margin:0; padding:0;">
             {"".join(blocks)}
         </body>
         </html>
@@ -4587,6 +4994,273 @@ class FullScreenLyricPreviewDialog(QDialog):
         self._scroll_timer.stop()
         super().closeEvent(event)
 
+
+APP_VERSION = "1.1.0 BETA"
+GITHUB_REPO = "muhdrasydan99/nocturne"
+GITHUB_LATEST_API = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
+
+
+def _parse_version_tuple(ver_str: str) -> tuple[int, ...]:
+    nums = re.findall(r"\d+", str(ver_str or ""))
+    return tuple(int(n) for n in nums) if nums else (0,)
+
+
+class GitHubUpdateCheckWorker(QThread):
+    check_done = Signal(dict)
+
+    def run(self):
+        try:
+            req = urllib.request.Request(
+                GITHUB_LATEST_API,
+                headers={"User-Agent": "Nocturne-DAW-Updater", "Accept": "application/vnd.github+json"},
+            )
+            with urllib.request.urlopen(req, timeout=8) as resp:
+                data = json.loads(resp.read().decode("utf-8"))
+
+            tag = str(data.get("tag_name") or "").strip()
+            clean_tag = tag.lstrip("vV")
+            notes = str(data.get("body") or "No release notes provided.").strip()
+            html_url = str(data.get("html_url") or f"https://github.com/{GITHUB_REPO}/releases").strip()
+
+            asset_url = ""
+            asset_name = ""
+            for asset in data.get("assets") or []:
+                name = str(asset.get("name") or "")
+                if name.lower().endswith((".exe", ".zip")):
+                    asset_url = str(asset.get("browser_download_url") or "")
+                    asset_name = name
+                    if name.lower().endswith(".exe"):
+                        break
+
+            has_update = _parse_version_tuple(clean_tag) > _parse_version_tuple(APP_VERSION)
+            self.check_done.emit({
+                "ok": True,
+                "has_update": has_update,
+                "latest_tag": tag or f"v{clean_tag}",
+                "clean_ver": clean_tag,
+                "notes": notes,
+                "html_url": html_url,
+                "asset_url": asset_url,
+                "asset_name": asset_name,
+            })
+        except Exception as exc:
+            self.check_done.emit({"ok": False, "error": str(exc)})
+
+
+class GitHubUpdateDownloadWorker(QThread):
+    progress = Signal(int)
+    download_done = Signal(bool, str)
+
+    def __init__(self, url: str, dest_path: str):
+        super().__init__()
+        self.url = url
+        self.dest_path = dest_path
+
+    def run(self):
+        try:
+            req = urllib.request.Request(self.url, headers={"User-Agent": "Nocturne-DAW-Updater"})
+            with urllib.request.urlopen(req, timeout=30) as resp:
+                total = int(resp.headers.get("Content-Length") or 0)
+                downloaded = 0
+                with open(self.dest_path, "wb") as f:
+                    while True:
+                        chunk = resp.read(65536)
+                        if not chunk:
+                            break
+                        f.write(chunk)
+                        downloaded += len(chunk)
+                        if total > 0:
+                            self.progress.emit(int(downloaded * 100 / total))
+            self.download_done.emit(True, self.dest_path)
+        except Exception as exc:
+            self.download_done.emit(False, str(exc))
+
+class LyricsAnalyzerDialog(QDialog):
+    """Dedicated spacious dialog for Lyrics Analyzer craft feedback & exercises."""
+    def __init__(self, parent, lyrics_text: str):
+        super().__init__(parent)
+        self.lyrics_text = lyrics_text
+        self.setWindowTitle("nocturne | lyrics analyzer")
+        self.setWindowIcon(get_nocturne_app_icon())
+        self.resize(660, 620)
+        self.build_ui()
+        self.run_analysis()
+
+    def _get_theme(self) -> dict:
+        theme_id = getattr(self.parent(), "studio_settings", {}).get("theme", "purple")
+        return get_theme_palette(theme_id)
+
+    def build_ui(self):
+        t = self._get_theme()
+        accent_fg = t.get("accent_fg", "#FFFFFF")
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(20, 20, 20, 20)
+        layout.setSpacing(12)
+
+        # Header & Controls Card
+        top_card = QFrame()
+        top_card.setObjectName("PanelCard")
+        top_lay = QVBoxLayout(top_card)
+        top_lay.setContentsMargins(16, 14, 16, 14)
+        top_lay.setSpacing(10)
+
+        title_row = QHBoxLayout()
+        title_lbl = QLabel("🎯 LYRICS ANALYZER", objectName="SectionHeader")
+        title_lbl.setStyleSheet(f"color: {t['accent']}; font-size: 15px; font-weight: 800; letter-spacing: 0.6px;")
+        sub_lbl = QLabel("Craft breakdown, priority notes & targeted exercises")
+        sub_lbl.setStyleSheet("color: #A1A1AA; font-size: 12px;")
+        title_row.addWidget(title_lbl)
+        title_row.addStretch()
+        title_row.addWidget(sub_lbl)
+        top_lay.addLayout(title_row)
+
+        ctrl_row = QHBoxLayout()
+        ctrl_row.setSpacing(8)
+
+        self.mode_combo = QComboBox()
+        self.mode_combo.addItem("Critique Draft (Honest Craft Notes)", "critique")
+        self.mode_combo.addItem("Fix One Problem", "fix")
+        self.mode_combo.addItem("Writer's Block (5-Min Exercises)", "block")
+        self.mode_combo.addItem("Finish Song Plan (Structure & Hook)", "finish")
+        self.mode_combo.setStyleSheet("padding: 6px 10px; font-size: 13px;")
+        self.mode_combo.currentIndexChanged.connect(self._on_mode_changed)
+        ctrl_row.addWidget(self.mode_combo, 1)
+
+        self.focus_input = QLineEdit()
+        self.focus_input.setPlaceholderText("Target bar or problem (e.g. Line 4 rhyme)...")
+        self.focus_input.setStyleSheet("padding: 6px 10px; font-size: 13px;")
+        self.focus_input.setVisible(False)
+        self.focus_input.returnPressed.connect(self.run_analysis)
+        ctrl_row.addWidget(self.focus_input, 1)
+
+        self.btn_refresh = QPushButton("Analyze")
+        self.btn_refresh.setObjectName("PrimaryBtn")
+        self.btn_refresh.setCursor(Qt.PointingHandCursor)
+        self.btn_refresh.setStyleSheet(f"""
+            QPushButton {{
+                background-color: {t["accent"]};
+                border: 1px solid {t["accent_hover"]};
+                color: {accent_fg};
+                border-radius: 6px;
+                padding: 6px 16px;
+                font-size: 13px;
+                font-weight: 700;
+            }}
+            QPushButton:hover {{
+                background-color: {t["accent_hover"]};
+                color: {accent_fg};
+            }}
+        """)
+        self.btn_refresh.clicked.connect(self.run_analysis)
+        ctrl_row.addWidget(self.btn_refresh)
+        top_lay.addLayout(ctrl_row)
+
+        layout.addWidget(top_card)
+
+        # 1. What Works
+        lbl_works = QLabel("WHAT WORKS", objectName="SectionHeader")
+        lbl_works.setStyleSheet("font-size: 12px; font-weight: 800;")
+        layout.addWidget(lbl_works)
+        self.box_works = QPlainTextEdit()
+        self.box_works.setReadOnly(True)
+        self.box_works.setFixedHeight(76)
+        self.box_works.setStyleSheet(f"""
+            QPlainTextEdit {{
+                background-color: {t["bg_surface"]};
+                border: 1px solid {t["accent_border"]};
+                border-radius: 6px;
+                color: #F4F4F5;
+                font-size: 14px;
+                padding: 10px;
+            }}
+        """)
+        layout.addWidget(self.box_works)
+
+        # 2. Priority Notes
+        lbl_notes = QLabel("PRIORITY NOTES (MAX 3)", objectName="SectionHeader")
+        lbl_notes.setStyleSheet("font-size: 12px; font-weight: 800;")
+        layout.addWidget(lbl_notes)
+        self.box_notes = QPlainTextEdit()
+        self.box_notes.setReadOnly(True)
+        self.box_notes.setMinimumHeight(165)
+        self.box_notes.setStyleSheet(f"""
+            QPlainTextEdit {{
+                background-color: {t["bg_surface"]};
+                border: 1px solid {t["border"]};
+                border-radius: 6px;
+                color: #E4E4E7;
+                font-size: 14px;
+                padding: 10px;
+            }}
+        """)
+        layout.addWidget(self.box_notes, 1)
+
+        # 3. Exercise & Next Step
+        lbl_action = QLabel("MATCHED EXERCISE & NEXT STEP", objectName="SectionHeader")
+        lbl_action.setStyleSheet("font-size: 12px; font-weight: 800;")
+        layout.addWidget(lbl_action)
+        self.box_action = QPlainTextEdit()
+        self.box_action.setReadOnly(True)
+        self.box_action.setFixedHeight(125)
+        self.box_action.setStyleSheet(f"""
+            QPlainTextEdit {{
+                background-color: {t["bg_surface"]};
+                border: 1px solid {t["border"]};
+                border-radius: 6px;
+                color: #E4E4E7;
+                font-size: 14px;
+                padding: 10px;
+            }}
+        """)
+        layout.addWidget(self.box_action)
+
+        # Bottom Close Row
+        btn_row = QHBoxLayout()
+        btn_row.addStretch()
+        btn_close = QPushButton("Back to Lyric Canvas")
+        btn_close.setObjectName("PrimaryBtn")
+        btn_close.setCursor(Qt.PointingHandCursor)
+        btn_close.setStyleSheet(f"""
+            QPushButton {{
+                background-color: {t["accent"]};
+                border: 1px solid {t["accent_hover"]};
+                color: {accent_fg};
+                border-radius: 6px;
+                padding: 7px 18px;
+                font-size: 13px;
+                font-weight: 700;
+            }}
+            QPushButton:hover {{
+                background-color: {t["accent_hover"]};
+                color: {accent_fg};
+            }}
+        """)
+        btn_close.clicked.connect(self.accept)
+        btn_row.addWidget(btn_close)
+        layout.addLayout(btn_row)
+
+    def _on_mode_changed(self):
+        mode = self.mode_combo.currentData()
+        self.focus_input.setVisible(mode == "fix")
+
+    def run_analysis(self):
+        if self.parent() and hasattr(self.parent(), "lyric_editor"):
+            self.lyrics_text = self.parent().lyric_editor.toPlainText()
+
+        mode = self.mode_combo.currentData() or "critique"
+        focus = self.focus_input.text().strip()
+        res = run_songwriting_coach(self.lyrics_text, mode=mode, focus_problem=focus)
+
+        self.box_works.setPlainText(res.get("what_works", ""))
+        notes = res.get("notes", [])
+        self.box_notes.setPlainText("\n\n".join(f"{i + 1}. {n}" for i, n in enumerate(notes)))
+        self.box_action.setPlainText(
+            f"EXERCISE:\n{res.get('exercise', '')}\n\nNEXT STEP:\n{res.get('next_step', '')}"
+        )
+        self.box_action.setPlainText(
+            f"EXERCISE:\n{res.get('exercise', '')}\n\nNEXT STEP:\n{res.get('next_step', '')}"
+        )
 
 class NocturneMainWindow(QMainWindow):
     def __init__(self, profiles_root: str, profile_name: str, on_switch_profile_callback):
@@ -4712,7 +5386,99 @@ class NocturneMainWindow(QMainWindow):
                     w.terminate()
                     w.wait(500)
         super().closeEvent(event)
-        
+
+    def _open_lyrics_analyzer(self):
+        lyrics_txt = self.lyric_editor.toPlainText() if hasattr(self, "lyric_editor") else ""
+        dlg = LyricsAnalyzerDialog(self, lyrics_txt)
+        dlg.exec()
+
+        # Auto-isi dua baris terakhir ke Rhyme Checker jika masih kosong
+        if hasattr(self, "rc_input_a") and hasattr(self, "rc_input_b"):
+            lines = [ln.strip() for ln in lyrics_txt.splitlines() if ln.strip() and not ln.strip().startswith("[")]
+            if len(lines) >= 2 and not self.rc_input_a.text().strip():
+                w1 = re.findall(r"[a-zA-Z0-9'-]+", lines[-2])
+                w2 = re.findall(r"[a-zA-Z0-9'-]+", lines[-1])
+                if w1 and w2:
+                    self.rc_input_a.setText(w1[-1])
+                    self.rc_input_b.setText(w2[-1])
+
+
+    def _swap_rhyme_checker_words(self):
+        if not hasattr(self, "rc_input_a") or not hasattr(self, "rc_input_b"):
+            return
+        w_a = self.rc_input_a.text()
+        w_b = self.rc_input_b.text()
+        self.rc_input_a.blockSignals(True)
+        self.rc_input_b.blockSignals(True)
+        self.rc_input_a.setText(w_b)
+        self.rc_input_b.setText(w_a)
+        self.rc_input_a.blockSignals(False)
+        self.rc_input_b.blockSignals(False)
+        self._run_rhyme_checker()
+
+    def _clear_rhyme_checker(self):
+        if not hasattr(self, "rc_input_a") or not hasattr(self, "rc_input_b"):
+            return
+        self.rc_input_a.clear()
+        self.rc_input_b.clear()
+        self.rc_input_a.setFocus()
+
+    def _run_rhyme_checker(self):
+        if not hasattr(self, "rc_input_a") or not hasattr(self, "rc_input_b"):
+            return
+        t = get_theme_palette(getattr(self, "studio_settings", {}).get("theme", "purple"))
+        res = check_rhyme_pair(self.rc_input_a.text(), self.rc_input_b.text())
+        score = int(res.get("score", 0))
+
+        if score >= 80:
+            badge_bg = t["accent"]
+            badge_fg = t.get("accent_fg", "#FFFFFF")
+            badge_bd = t["accent_hover"]
+        elif score >= 45:
+            badge_bg = "#FBBF24"
+            badge_fg = "#0A0A0A"
+            badge_bd = "#FCD34D"
+        elif score > 0:
+            badge_bg = "#EF4444"
+            badge_fg = "#FFFFFF"
+            badge_bd = "#F87171"
+        else:
+            badge_bg = t["bg_elevated"]
+            badge_fg = "#A1A1AA"
+            badge_bd = t["border"]
+
+        status_txt = res.get("label", "Compare two words") if score > 0 else "Compare two words"
+        self.lbl_rc_status.setText(status_txt)
+        self.lbl_rc_status.setStyleSheet(
+            f"color: {'#F4F4F5' if score > 0 else '#A1A1AA'}; font-size: 11px; font-weight: 700; border: none; background: transparent;"
+        )
+
+        self.lbl_rc_score.setText(f"{score}%" if score > 0 else "—")
+        self.lbl_rc_score.setStyleSheet(f"""
+            background-color: {badge_bg};
+            color: {badge_fg};
+            border: 1px solid {badge_bd};
+            border-radius: 9px;
+            padding: 1px 6px;
+            font-family: 'Consolas';
+            font-size: 11px;
+            font-weight: 800;
+        """)
+
+        self.rc_progress.setValue(score)
+        self.rc_progress.setStyleSheet(f"""
+            QProgressBar {{ background-color: {t["bg_elevated"]}; border: none; border-radius: 2px; }}
+            QProgressBar::chunk {{ background-color: {badge_bg if score > 0 else t["border"]}; border-radius: 2px; }}
+        """)
+
+        phon_a = res.get("phon_a", "-")
+        phon_b = res.get("phon_b", "-")
+        tail = res.get("match_part", "-")
+        if score > 0:
+            self.lbl_rc_phonetics.setText(f"{phon_a}  ↔  {phon_b}   •   TAIL: {tail}")
+        else:
+            self.lbl_rc_phonetics.setText("KEY: —  •  TAIL: —")
+
     def build_ui(self):
         central = QWidget()
         self.setCentralWidget(central)
@@ -4876,9 +5642,12 @@ class NocturneMainWindow(QMainWindow):
 
         # Beat Deck + Metronome
         left_layout.addWidget(QLabel("beat player", objectName="SectionHeader"))
-        beat_box = QFrame()
-        beat_box.setStyleSheet("background-color: #121219; border: 1px solid #262532; border-radius: 6px; padding: 6px;")
-        beat_layout = QVBoxLayout(beat_box)
+        t_init = get_theme_palette(getattr(self, "studio_settings", {}).get("theme", "purple"))
+        self.beat_box = QFrame()
+        self.beat_box.setStyleSheet(
+            f"QFrame {{ background-color: {t_init['bg_surface']}; border: 1px solid {t_init['border']}; border-radius: 6px; padding: 6px; }}"
+        )
+        beat_layout = QVBoxLayout(self.beat_box)
         beat_layout.setSpacing(6)
 
         self.beat_label = ElidedLabel("no beat loaded")
@@ -4922,7 +5691,7 @@ class NocturneMainWindow(QMainWindow):
 
         self.lbl_beat_time = QLabel("00:00 / 00:00")
         self.lbl_beat_time.setStyleSheet(
-            "background: transparent; border: none; color: #BDB5E8; "
+            "background: transparent; border: none; color: #D4D4D8; "
             "font-family: 'Consolas', monospace; font-size: 10px; font-weight: 700;"
         )
         seek_row.addWidget(self.lbl_beat_time)
@@ -4958,21 +5727,6 @@ class NocturneMainWindow(QMainWindow):
         self.btn_stamp_line.setFixedHeight(23)
         self.btn_stamp_line.setMinimumWidth(0)
         self.btn_stamp_line.setToolTip("Insert [MM:SS] timestamp on current lyric line (Ctrl+T)")
-        self.btn_stamp_line.setStyleSheet("""
-            QPushButton {
-                background-color: #1F1C2F;
-                border: 1px solid #6A5AB8;
-                color: #E2DEF8;
-                padding: 2px 5px;
-                font-size: 10px;
-                font-weight: 700;
-            }
-            QPushButton:hover {
-                background-color: #332C54;
-                border-color: #AFA2F2;
-                color: #FFFFFF;
-            }
-        """)
         self.btn_stamp_line.clicked.connect(self.stamp_timestamp_on_current_line)
         marker_ctrl_row.addWidget(self.btn_stamp_line)
 
@@ -5133,13 +5887,13 @@ class NocturneMainWindow(QMainWindow):
         metro_row.addWidget(self.btn_anchor_beat1)
 
         beat_layout.addLayout(metro_row)
-        left_layout.addWidget(beat_box)
+        left_layout.addWidget(self.beat_box)
 
-        # Punchline Vault (Scrapbook)
+# Punchline Vault (Scrapbook)
         left_layout.addWidget(QLabel("scrapbook", objectName="SectionHeader"))
         self.stash_editor = QPlainTextEdit()
-        self.stash_editor.setMinimumHeight(64)
-        self.stash_editor.setMaximumHeight(82)
+        self.stash_editor.setMinimumHeight(54)
+        self.stash_editor.setMaximumHeight(68)
         self.stash_editor.setPlaceholderText("Drop loose bars, hooks, or slang ideas here...")
         self.stash_editor.textChanged.connect(self.schedule_realtime_vault_update)
         self.stash_editor.setStyleSheet("""
@@ -5154,17 +5908,45 @@ class NocturneMainWindow(QMainWindow):
         """)
         left_layout.addWidget(self.stash_editor)
 
+        # ==========================================
+        # LYRICS ANALYZER (DIALOG LAUNCHER)
+        # ==========================================
+        left_layout.addWidget(QLabel("LYRICS ANALYZER", objectName="SectionHeader"))
+        self.btn_coach_analyze = QPushButton("🎯 Analyze")
+        self.btn_coach_analyze.setObjectName("PrimaryBtn")
+        self.btn_coach_analyze.setMinimumWidth(0)
+        self.btn_coach_analyze.setCursor(Qt.PointingHandCursor)
+        t_coach = get_theme_palette(getattr(self, "studio_settings", {}).get("theme", "purple"))
+        self.btn_coach_analyze.setStyleSheet(f"""
+            QPushButton {{
+                background-color: {t_coach["accent"]};
+                border: 1px solid {t_coach["accent_hover"]};
+                color: {t_coach["accent_fg"]};
+                padding: 5px 8px;
+                font-size: 11px;
+                font-weight: 700;
+            }}
+            QPushButton:hover {{
+                background-color: {t_coach["accent_hover"]};
+                color: {t_coach["accent_fg"]};
+            }}
+        """)
+        self.btn_coach_analyze.setToolTip("Open Lyrics Analyzer for craft feedback, exercises & finishing plan")
+        self.btn_coach_analyze.clicked.connect(self._open_lyrics_analyzer)
+        left_layout.addWidget(self.btn_coach_analyze)
+
         # Rate My Lyrics (Interactive Pen Meter)
         left_layout.addWidget(QLabel("PEN METER", objectName="SectionHeader"))
-        rate_box = QFrame()
-        rate_box.setStyleSheet("""
-            QFrame {
-                background-color: #14131C;
-                border: 1px solid #3A3360;
+        t = get_theme_palette(getattr(self, "studio_settings", {}).get("theme", "purple"))
+        self.rate_box = QFrame()
+        self.rate_box.setStyleSheet(f"""
+            QFrame {{
+                background-color: {t["bg_surface"]};
+                border: 1px solid {t["accent_border"]};
                 border-radius: 8px;
-            }
+            }}
         """)
-        rate_layout = QVBoxLayout(rate_box)
+        rate_layout = QVBoxLayout(self.rate_box)
         rate_layout.setContentsMargins(10, 10, 10, 10)
         rate_layout.setSpacing(8)
 
@@ -5179,7 +5961,7 @@ class NocturneMainWindow(QMainWindow):
 
         self.rate_tier_lbl = QLabel("READY TO SCAN")
         self.rate_tier_lbl.setTextFormat(Qt.PlainText)
-        self.rate_tier_lbl.setStyleSheet("color: #C6BEF0; font-size: 11px; font-weight: 800; letter-spacing: 0.4px; border: none;")
+        self.rate_tier_lbl.setStyleSheet(f"color: {t['accent_hover']}; font-size: 11px; font-weight: 800; letter-spacing: 0.4px; border: none;")
         mini_stats_col.addWidget(self.rate_tier_lbl)
 
         self.mini_multie_lbl = QLabel("Rhyme: —  •  Flow: —")
@@ -5207,7 +5989,21 @@ class NocturneMainWindow(QMainWindow):
         self.btn_rate_now = QPushButton("⚡ Rate Lyrics")
         self.btn_rate_now.setObjectName("PrimaryBtn")
         self.btn_rate_now.setMinimumWidth(0)
-        self.btn_rate_now.setStyleSheet("padding: 5px 6px; font-size: 11px;")
+        t_init = get_theme_palette(getattr(self, "studio_settings", {}).get("theme", "purple"))
+        self.btn_rate_now.setStyleSheet(f"""
+            QPushButton {{
+                background-color: {t_init["accent"]};
+                border: 1px solid {t_init["accent_hover"]};
+                color: {t_init["accent_fg"]};
+                padding: 5px 6px;
+                font-size: 11px;
+                font-weight: 700;
+            }}
+            QPushButton:hover {{
+                background-color: {t_init["accent_hover"]};
+                color: {t_init["accent_fg"]};
+            }}
+        """)
         self.btn_rate_now.clicked.connect(self.trigger_rate_my_lyrics)
         rate_btn_row.addWidget(self.btn_rate_now, 1)
 
@@ -5219,7 +6015,7 @@ class NocturneMainWindow(QMainWindow):
         rate_btn_row.addWidget(self.btn_rate_details, 1)
 
         rate_layout.addLayout(rate_btn_row)
-        left_layout.addWidget(rate_box)
+        left_layout.addWidget(self.rate_box)
         left_layout.addStretch()
 
         left_scroll.setWidget(left_scroll_body)
@@ -5363,11 +6159,19 @@ class NocturneMainWindow(QMainWindow):
         self.btn_live_rhyme.toggled.connect(self._on_live_rhyme_toggled)
         r_hdr_row.addWidget(self.btn_live_rhyme)
 
-        btn_quick_lex = QPushButton("+ Slang")
-        btn_quick_lex.setMinimumWidth(0)
-        btn_quick_lex.setStyleSheet("padding: 2px 6px; font-size: 10px;")
-        btn_quick_lex.clicked.connect(self.open_lexicon_manager)
-        r_hdr_row.addWidget(btn_quick_lex)
+        self.lbl_rhyme_loading = QLabel("⠋")
+        self.lbl_rhyme_loading.setFixedWidth(14)
+        self.lbl_rhyme_loading.setAlignment(Qt.AlignCenter)
+        self.lbl_rhyme_loading.setStyleSheet("color: #FFFFFF; font-size: 12px; font-weight: 800; background: transparent; border: none;")
+        self.lbl_rhyme_loading.setToolTip("Searching rhymes...")
+        self.lbl_rhyme_loading.setVisible(False)
+        r_hdr_row.addWidget(self.lbl_rhyme_loading)
+
+        self._rhyme_spin_frames = ("⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏")
+        self._rhyme_spin_idx = 0
+        self._rhyme_spin_timer = QTimer(self)
+        self._rhyme_spin_timer.setInterval(75)
+        self._rhyme_spin_timer.timeout.connect(self._tick_rhyme_spinner)
 
         btn_hide_right_inline = QPushButton("▶")
         btn_hide_right_inline.setObjectName("EdgeArrowBtn")
@@ -5399,7 +6203,7 @@ class NocturneMainWindow(QMainWindow):
         self.inspected_meta = QLabel("Type or click any word in lyrics for realtime detection")
         self.inspected_meta.setTextFormat(Qt.PlainText)
         self.inspected_meta.setMinimumWidth(0)
-        self.inspected_meta.setStyleSheet("color: #C6BEF0; font-weight: 700; font-size: 11px;")
+        self.inspected_meta.setStyleSheet("color: #E4E4E7; font-weight: 700; font-size: 11px;")
         right_layout.addWidget(self.inspected_meta)
 
         self.matching_lines_hdr = QLabel("RHYMING LINES IN LYRICS (0)", objectName="SectionHeader")
@@ -5449,7 +6253,7 @@ class NocturneMainWindow(QMainWindow):
         self._rhyme_chip_labels = {
             "ALL": "All",
             "EN": "EN",
-            "BM": "BM",
+            "BM": "MS",
             "PACKS": "Packs",
             "SLANT": "Slant",
         }
@@ -5537,40 +6341,140 @@ class NocturneMainWindow(QMainWindow):
         rhyme_page_row.addWidget(self.btn_rhyme_next)
         right_layout.addLayout(rhyme_page_row)
 
-        # --- EDITOR QUICK TOOLS ---
-        right_layout.addWidget(QLabel("EDITOR TOOLS", objectName="SectionHeader"))
-        tools_box = QFrame()
-        tools_box.setStyleSheet("""
+        # ==========================================
+        # RHYME CHECKER (2-WORD PHONETIC COMPARATOR)
+        # ==========================================
+        rc_hdr_row = QHBoxLayout()
+        rc_hdr_row.setContentsMargins(0, 2, 0, 0)
+        rc_hdr_row.setSpacing(4)
+        rc_hdr_lbl = QLabel("RHYME CHECKER", objectName="SectionHeader")
+        rc_hdr_row.addWidget(rc_hdr_lbl)
+        rc_hdr_row.addStretch()
+
+        self.btn_rc_clear = QPushButton("Clear")
+        self.btn_rc_clear.setObjectName("EdgeArrowBtn")
+        self.btn_rc_clear.setFixedHeight(18)
+        self.btn_rc_clear.setStyleSheet("padding: 0px 6px; font-size: 10px;")
+        self.btn_rc_clear.setToolTip("Clear both words")
+        self.btn_rc_clear.clicked.connect(self._clear_rhyme_checker)
+        rc_hdr_row.addWidget(self.btn_rc_clear)
+        right_layout.addLayout(rc_hdr_row)
+
+        self.rc_card = QFrame()
+        self.rc_card.setStyleSheet("""
             QFrame {
-                background-color: #121219;
-                border: 1px solid #262532;
+                background-color: #0E0E14;
+                border: 1px solid #22222C;
                 border-radius: 8px;
             }
         """)
-        tools_layout = QVBoxLayout(tools_box)
+        rc_card_lay = QVBoxLayout(self.rc_card)
+        rc_card_lay.setContentsMargins(8, 8, 8, 8)
+        rc_card_lay.setSpacing(6)
+
+        rc_inputs_row = QHBoxLayout()
+        rc_inputs_row.setSpacing(4)
+
+        self.rc_input_a = QLineEdit()
+        self.rc_input_a.setMinimumWidth(0)
+        self.rc_input_a.setAlignment(Qt.AlignCenter)
+        self.rc_input_a.setPlaceholderText("Word 1")
+        self.rc_input_a.textChanged.connect(self._run_rhyme_checker)
+
+        self.btn_rc_swap = QPushButton("⇄")
+        self.btn_rc_swap.setObjectName("EdgeArrowBtn")
+        self.btn_rc_swap.setFixedSize(24, 24)
+        self.btn_rc_swap.setCursor(Qt.PointingHandCursor)
+        self.btn_rc_swap.setStyleSheet("padding: 0px; font-size: 12px; font-weight: 700;")
+        self.btn_rc_swap.setToolTip("Swap Word 1 & Word 2")
+        self.btn_rc_swap.clicked.connect(self._swap_rhyme_checker_words)
+
+        self.rc_input_b = QLineEdit()
+        self.rc_input_b.setMinimumWidth(0)
+        self.rc_input_b.setAlignment(Qt.AlignCenter)
+        self.rc_input_b.setPlaceholderText("Word 2")
+        self.rc_input_b.textChanged.connect(self._run_rhyme_checker)
+
+        rc_inputs_row.addWidget(self.rc_input_a, 1)
+        rc_inputs_row.addWidget(self.btn_rc_swap)
+        rc_inputs_row.addWidget(self.rc_input_b, 1)
+        rc_card_lay.addLayout(rc_inputs_row)
+
+        rc_top_row = QHBoxLayout()
+        rc_top_row.setSpacing(6)
+        self.lbl_rc_status = QLabel("Compare two words")
+        self.lbl_rc_status.setStyleSheet("color: #A1A1AA; font-size: 11px; font-weight: 700; border: none; background: transparent;")
+
+        self.lbl_rc_score = QLabel("—")
+        self.lbl_rc_score.setAlignment(Qt.AlignCenter)
+        self.lbl_rc_score.setFixedWidth(44)
+        self.lbl_rc_score.setStyleSheet("""
+            background-color: #1A1A24;
+            color: #A1A1AA;
+            border: 1px solid #2B2A39;
+            border-radius: 9px;
+            padding: 1px 6px;
+            font-family: 'Consolas';
+            font-size: 11px;
+            font-weight: 800;
+        """)
+        rc_top_row.addWidget(self.lbl_rc_status, 1)
+        rc_top_row.addWidget(self.lbl_rc_score)
+        rc_card_lay.addLayout(rc_top_row)
+
+        self.rc_progress = QProgressBar()
+        self.rc_progress.setRange(0, 100)
+        self.rc_progress.setValue(0)
+        self.rc_progress.setTextVisible(False)
+        self.rc_progress.setFixedHeight(4)
+        self.rc_progress.setStyleSheet("""
+            QProgressBar { background-color: #181820; border: none; border-radius: 2px; }
+            QProgressBar::chunk { background-color: #6D5BD0; border-radius: 2px; }
+        """)
+        rc_card_lay.addWidget(self.rc_progress)
+
+        self.lbl_rc_phonetics = QLabel("KEY: —  •  TAIL: —")
+        self.lbl_rc_phonetics.setAlignment(Qt.AlignCenter)
+        self.lbl_rc_phonetics.setStyleSheet("color: #71717A; font-family: 'Consolas'; font-size: 10px; font-weight: 600; border: none; background: transparent;")
+        rc_card_lay.addWidget(self.lbl_rc_phonetics)
+
+        right_layout.addWidget(self.rc_card)
+
+        # --- EDITOR QUICK TOOLS ---
+        right_layout.addWidget(QLabel("EDITOR TOOLS", objectName="SectionHeader"))
+        t = get_theme_palette(getattr(self, "studio_settings", {}).get("theme", "purple"))
+        self.tools_box = QFrame()
+        self.tools_box.setStyleSheet(f"""
+            QFrame {{
+                background-color: {t["bg_surface"]};
+                border: 1px solid {t["border"]};
+                border-radius: 8px;
+            }}
+        """)
+        tools_layout = QVBoxLayout(self.tools_box)
         tools_layout.setContentsMargins(10, 10, 10, 10)
         tools_layout.setSpacing(7)
 
-        tool_toggle_qss = """
-            QPushButton {
-                background-color: #191922;
-                border: 1px solid #2A2A36;
+        tool_toggle_qss = f"""
+            QPushButton {{
+                background-color: {t["bg_base"]};
+                border: 1px solid {t["border"]};
                 color: #A1A1AA;
                 border-radius: 6px;
                 padding: 6px 10px;
                 font-size: 11px;
                 font-weight: 700;
                 text-align: left;
-            }
-            QPushButton:hover {
-                border-color: #9483E8;
+            }}
+            QPushButton:hover {{
+                border-color: {t["accent"]};
                 color: #FFFFFF;
-            }
-            QPushButton:checked {
-                background-color: #252138;
-                border-color: #7F6DE0;
-                color: #EFEDFC;
-            }
+            }}
+            QPushButton:checked {{
+                background-color: {t["accent_soft"]};
+                border-color: {t["accent"]};
+                color: #FFFFFF;
+            }}
         """
 
         self.btn_toggle_bar_counts = QPushButton("🔢  Bar Syllable Counts: ON")
@@ -5591,69 +6495,43 @@ class NocturneMainWindow(QMainWindow):
 
         self.btn_fullscreen_preview = QPushButton("⛶  Full Screen Lyric Preview")
         self.btn_fullscreen_preview.setCursor(Qt.PointingHandCursor)
-        self.btn_fullscreen_preview.setStyleSheet("""
-            QPushButton {
-                background-color: #1F1C2F;
-                border: 1px solid #6A5AB8;
-                color: #E2DEF8;
+        self.btn_fullscreen_preview.setStyleSheet(f"""
+            QPushButton {{
+                background-color: {t["accent_soft"]};
+                border: 1px solid {t["accent_border"]};
+                color: #FFFFFF;
                 border-radius: 6px;
                 padding: 7px 10px;
                 font-size: 11px;
                 font-weight: 700;
-            }
-            QPushButton:hover {
-                background-color: #433A70;
-                border-color: #AFA2F2;
+            }}
+            QPushButton:hover {{
+                background-color: {t["accent"]};
+                border-color: {t["accent_hover"]};
                 color: #FFFFFF;
-            }
+            }}
         """)
         self.btn_fullscreen_preview.clicked.connect(self.open_fullscreen_lyric_preview)
         tools_layout.addWidget(self.btn_fullscreen_preview)
 
-        right_layout.addWidget(tools_box)
+        right_layout.addWidget(self.tools_box)
         right_layout.addStretch(1)
 
         # --- ABOUT CARD (BOTTOM RIGHT SIDEBAR) ---
-        about_box = QFrame()
-        about_box.setStyleSheet("""
-            QFrame {
-                background-color: #111117;
-                border: 1px solid #262533;
-                border-top: 2px solid #6D5BD0;
-                border-radius: 8px;
-            }
-        """)
-        about_layout = QVBoxLayout(about_box)
+        self.about_box = QFrame()
+        about_layout = QVBoxLayout(self.about_box)
         about_layout.setContentsMargins(12, 10, 12, 10)
         about_layout.setSpacing(6)
 
         about_top_row = QHBoxLayout()
         about_top_row.setSpacing(6)
 
-        lbl_about_hdr = QLabel("ABOUT")
-        lbl_about_hdr.setStyleSheet("""
-            color: #9483E8;
-            font-size: 9px;
-            font-weight: 800;
-            letter-spacing: 1.5px;
-            border: none;
-            background: transparent;
-        """)
-        about_top_row.addWidget(lbl_about_hdr)
+        self.lbl_about_hdr = QLabel("ABOUT")
+        about_top_row.addWidget(self.lbl_about_hdr)
         about_top_row.addStretch()
 
-        lbl_ver_pill = QLabel("v1.0 TESTING")
-        lbl_ver_pill.setStyleSheet("""
-            background-color: #1C1A29;
-            border: 1px solid #51468A;
-            color: #E2DEF8;
-            border-radius: 4px;
-            padding: 2px 6px;
-            font-family: 'Consolas', monospace;
-            font-size: 9px;
-            font-weight: 700;
-        """)
-        about_top_row.addWidget(lbl_ver_pill)
+        self.lbl_ver_pill = QLabel(f"v{APP_VERSION}")
+        about_top_row.addWidget(self.lbl_ver_pill)
         about_layout.addLayout(about_top_row)
 
         lbl_credits = QLabel("© 2026 • Made by Adan\nwith help of Gemini & Claude")
@@ -5668,7 +6546,19 @@ class NocturneMainWindow(QMainWindow):
         """)
         about_layout.addWidget(lbl_credits)
 
-        right_layout.addWidget(about_box)
+        update_row = QHBoxLayout()
+        update_row.setSpacing(6)
+
+        self.btn_check_update = QPushButton("↻ Check for Updates")
+        self.btn_check_update.setCursor(Qt.PointingHandCursor)
+        self.btn_check_update.clicked.connect(lambda: self.check_github_updates(silent=False))
+        update_row.addWidget(self.btn_check_update, 1)
+        about_layout.addLayout(update_row)
+
+        self._latest_release_info = None
+        QTimer.singleShot(3000, lambda: self.check_github_updates(silent=True))
+
+        right_layout.addWidget(self.about_box)
 
         
 
@@ -6357,6 +7247,7 @@ class NocturneMainWindow(QMainWindow):
     def _update_play_button_state(self):
         if not hasattr(self, "btn_play_beat"):
             return
+        t = get_theme_palette(getattr(self, "studio_settings", {}).get("theme", "purple"))
         if self.is_playing:
             self.btn_play_beat.setText("⏹ Stop")
             self.btn_play_beat.setStyleSheet("""
@@ -6376,58 +7267,59 @@ class NocturneMainWindow(QMainWindow):
             """)
         else:
             self.btn_play_beat.setText("▶ Play")
-            self.btn_play_beat.setStyleSheet("""
-                QPushButton {
-                    background-color: #6D5BD0;
-                    border: 1px solid #A596F0;
-                    color: #FFFFFF;
+            self.btn_play_beat.setStyleSheet(f"""
+                QPushButton {{
+                    background-color: {t["accent"]};
+                    border: 1px solid {t["accent_hover"]};
+                    color: {t["accent_fg"]};
                     padding: 4px 6px;
                     font-size: 11px;
                     font-weight: 700;
-                }
-                QPushButton:hover {
-                    background-color: #7F6DE0;
-                    border-color: #C6BEF0;
-                    color: #FFFFFF;
-                }
+                }}
+                QPushButton:hover {{
+                    background-color: {t["accent_hover"]};
+                    border-color: {t["accent_fg"]};
+                    color: {t["accent_fg"]};
+                }}
             """)
 
     def _update_loop_button_state(self):
         if not hasattr(self, "btn_loop"):
             return
+        t = get_theme_palette(getattr(self, "studio_settings", {}).get("theme", "purple"))
         if self.is_looping:
             self.btn_loop.setText("🔁 Loop: ON")
-            self.btn_loop.setStyleSheet("""
-                QPushButton {
-                    background-color: #433A70;
-                    border: 1px solid #AFA2F2;
-                    color: #EFEDFC;
+            self.btn_loop.setStyleSheet(f"""
+                QPushButton {{
+                    background-color: {t["accent_soft"]};
+                    border: 1px solid {t["accent"]};
+                    color: #FFFFFF;
                     padding: 4px 6px;
                     font-size: 11px;
                     font-weight: 700;
-                }
-                QPushButton:hover {
-                    background-color: #51468A;
-                    border-color: #E2DEF8;
-                    color: #FFFFFF;
-                }
+                }}
+                QPushButton:hover {{
+                    background-color: {t["accent"]};
+                    border-color: {t["accent_hover"]};
+                    color: {t["accent_fg"]};
+                }}
             """)
         else:
             self.btn_loop.setText("🔁 Loop: OFF")
-            self.btn_loop.setStyleSheet("""
-                QPushButton {
-                    background-color: #191922;
-                    border: 1px solid #2D2D3A;
+            self.btn_loop.setStyleSheet(f"""
+                QPushButton {{
+                    background-color: {t["bg_surface"]};
+                    border: 1px solid {t["border"]};
                     color: #A1A1AA;
                     padding: 4px 6px;
                     font-size: 11px;
                     font-weight: 600;
-                }
-                QPushButton:hover {
-                    background-color: #23222F;
-                    border-color: #9483E8;
+                }}
+                QPushButton:hover {{
+                    background-color: {t["bg_elevated"]};
+                    border-color: {t["accent"]};
                     color: #FFFFFF;
-                }
+                }}
             """)
         
     def on_load_or_unload_beat_clicked(self):
@@ -6747,6 +7639,14 @@ class NocturneMainWindow(QMainWindow):
         self.studio_settings = merged_cfg
         self.save_profile_settings()
 
+        active_theme = self.studio_settings.get("theme", "purple")
+        app = QApplication.instance()
+        if app:
+            app.setStyleSheet(build_obsidian_qss(active_theme))
+
+        t = get_theme_palette(active_theme)
+        self._apply_widget_themes(t)
+
         if is_initial_load and hasattr(self, "left_panel") and hasattr(self, "right_panel"):
             self._is_restoring_ui_state = True
             try:
@@ -6777,17 +7677,325 @@ class NocturneMainWindow(QMainWindow):
 
         
 
-        if is_initial_load or self.studio_settings.get("default_bpm", 140) != old_cfg.get("default_bpm", 140):
-            self.bpm_spin.setValue(self.studio_settings.get("default_bpm", 140))
+        try:
+            if hasattr(self, "bpm_spin") and (is_initial_load or self.studio_settings.get("default_bpm", 140) != old_cfg.get("default_bpm", 140)):
+                self.bpm_spin.setValue(self.studio_settings.get("default_bpm", 140))
+        except RuntimeError:
+            pass
 
-        if is_initial_load or self.studio_settings.get("default_volume", 80) != old_cfg.get("default_volume", 80):
-            self.vol_slider.setValue(self.studio_settings.get("default_volume", 80))
+        try:
+            if hasattr(self, "vol_slider") and (is_initial_load or self.studio_settings.get("default_volume", 80) != old_cfg.get("default_volume", 80)):
+                self.vol_slider.setValue(self.studio_settings.get("default_volume", 80))
+        except RuntimeError:
+            pass
 
         as_sec = self.studio_settings.get("autosave_seconds", 0)
         if as_sec > 0:
             self.autosave_timer.start(as_sec * 1000)
         else:
             self.autosave_timer.stop()
+
+    def _apply_widget_themes(self, t: dict):
+        bg_surface = t["bg_surface"]
+        bg_elevated = t["bg_elevated"]
+        border = t["border"]
+        accent = t["accent"]
+        accent_hover = t["accent_hover"]
+        accent_soft = t["accent_soft"]
+        accent_border = t["accent_border"]
+
+        # Center Pane & Lyric Editor Background
+        if hasattr(self, "center_panel"):
+            self.center_panel.setStyleSheet(f"""
+                QFrame#PanelCard {{
+                    background-color: {bg_surface};
+                    border: 1px solid {border};
+                    border-radius: 12px;
+                }}
+            """)
+
+        if hasattr(self, "lyric_editor"):
+            self.lyric_editor.setStyleSheet(f"""
+                QPlainTextEdit {{
+                    background-color: {t["bg_base"]};
+                    color: #F4F4F5;
+                    border: none;
+                    border-radius: 8px;
+                    selection-background-color: {accent};
+                    selection-color: #FFFFFF;
+                }}
+            """)
+            self.lyric_editor.viewport().update()
+            self.lyric_editor.update()
+
+        # Beat Player Box & Buttons
+        if hasattr(self, "beat_box"):
+            self.beat_box.setStyleSheet(
+                f"QFrame {{ background-color: {bg_surface}; border: 1px solid {border}; border-radius: 6px; padding: 6px; }}"
+            )
+
+        for btn_name in ("btn_stamp_line", "btn_tap_bpm", "btn_anchor_beat1"):
+            btn = getattr(self, btn_name, None)
+            if btn:
+                btn.setStyleSheet(f"""
+                    QPushButton {{
+                        background-color: {accent_soft};
+                        border: 1px solid {accent_border};
+                        color: #FFFFFF;
+                        border-radius: 5px;
+                        padding: 2px 5px;
+                        font-size: 10px;
+                        font-weight: 800;
+                    }}
+                    QPushButton:hover {{
+                        background-color: {accent};
+                        border-color: {accent_hover};
+                        color: #FFFFFF;
+                    }}
+                """)
+
+        if hasattr(self, "metro_sig_combo"):
+            self.metro_sig_combo.view().setStyleSheet(f"""
+                QListView {{
+                    background-color: {bg_surface};
+                    border: 1px solid {accent_border};
+                    border-radius: 6px;
+                    padding: 3px;
+                    outline: none;
+                }}
+                QListView::item {{
+                    min-height: 24px;
+                    padding: 3px 6px;
+                    color: #F4F4F5;
+                    font-size: 11px;
+                    font-weight: 600;
+                }}
+                QListView::item:selected {{
+                    background-color: {accent};
+                    color: #FFFFFF;
+                }}
+            """)
+
+        if hasattr(self, "beat_seekbar"):
+            self.beat_seekbar.update()
+        if hasattr(self, "_update_play_button_state"):
+            self._update_play_button_state()
+        if hasattr(self, "_update_loop_button_state"):
+            self._update_loop_button_state()
+        # Songwriting Coach
+        if hasattr(self, "btn_coach_analyze"):
+            accent_fg = t.get("accent_fg", "#FFFFFF")
+            self.btn_coach_analyze.setStyleSheet(f"""
+                QPushButton {{
+                    background-color: {t["accent"]};
+                    border: 1px solid {t["accent_hover"]};
+                    color: {accent_fg};
+                    padding: 5px 8px;
+                    font-size: 11px;
+                    font-weight: 700;
+                }}
+                QPushButton:hover {{
+                    background-color: {t["accent_hover"]};
+                    color: {accent_fg};
+                }}
+            """)
+
+        # Pen Meter Card
+        if hasattr(self, "rate_box"):
+            self.rate_box.setStyleSheet(f"""
+                QFrame {{
+                    background-color: {bg_surface};
+                    border: 1px solid {accent_border};
+                    border-radius: 8px;
+                }}
+            """)
+        if hasattr(self, "btn_rate_now"):
+            accent_fg = t.get("accent_fg", "#FFFFFF")
+            self.btn_rate_now.setStyleSheet(f"""
+                QPushButton {{
+                    background-color: {t["accent"]};
+                    border: 1px solid {t["accent_hover"]};
+                    color: {accent_fg};
+                    padding: 5px 6px;
+                    font-size: 11px;
+                    font-weight: 700;
+                }}
+                QPushButton:hover {{
+                    background-color: {t["accent_hover"]};
+                    color: {accent_fg};
+                }}
+            """)
+        if hasattr(self, "rate_tier_lbl") and self.rate_tier_lbl.text() == "READY TO SCAN":
+            self.rate_tier_lbl.setStyleSheet(
+                f"color: {accent_hover}; font-size: 11px; font-weight: 800; letter-spacing: 0.4px; border: none;"
+            )
+        if hasattr(self, "sidebar_gauge") and self.sidebar_gauge.target_val == 0:
+            self.sidebar_gauge.ring_color = QColor(accent)
+            self.sidebar_gauge.update()
+
+        # Right Pane: Filter Chips & Rhyme Pills
+        if hasattr(self, "_rhyme_chips"):
+            chip_qss = f"""
+                QPushButton {{
+                    background-color: {bg_surface};
+                    color: #A1A1AA;
+                    border: 1px solid {border};
+                    border-radius: 10px;
+                    padding: 3px 8px;
+                    font-size: 10px;
+                    font-weight: 700;
+                }}
+                QPushButton:hover {{
+                    border-color: {accent};
+                    color: #FFFFFF;
+                }}
+                QPushButton:checked {{
+                    background-color: {accent_soft};
+                    color: #FFFFFF;
+                    border-color: {accent};
+                }}
+            """
+            for chip in self._rhyme_chips.values():
+                chip.setStyleSheet(chip_qss)
+
+        if hasattr(self, "list_rhymes"):
+            self.list_rhymes.setStyleSheet(f"""
+                QListWidget {{
+                    background-color: {t["bg_base"]};
+                    border: 1px solid {border};
+                    border-radius: 6px;
+                    padding: 4px;
+                }}
+                QListWidget::item {{
+                    background-color: {bg_surface};
+                    color: #F4F4F8;
+                    border: 1px solid {border};
+                    border-radius: 10px;
+                    padding: 4px 9px;
+                    font-size: 11px;
+                    font-weight: 600;
+                }}
+                QListWidget::item:hover {{
+                    background-color: {bg_elevated};
+                    border-color: {accent};
+                    color: #FFFFFF;
+                }}
+                QListWidget::item:selected {{
+                    background-color: {accent_soft};
+                    border-color: {accent};
+                    color: #FFFFFF;
+                }}
+            """)
+
+        if hasattr(self, "rc_card"):
+            self.rc_card.setStyleSheet(f"QFrame {{ background-color: {t['bg_base']}; border: 1px solid {t['border']}; border-radius: 8px; }}")
+            self._run_rhyme_checker()    
+
+        # Editor Tools
+        if hasattr(self, "tools_box"):
+            self.tools_box.setStyleSheet(f"""
+                QFrame {{
+                    background-color: {bg_surface};
+                    border: 1px solid {border};
+                    border-radius: 8px;
+                }}
+            """)
+
+        tool_toggle_qss = f"""
+            QPushButton {{
+                background-color: {bg_surface};
+                border: 1px solid {border};
+                color: #A1A1AA;
+                border-radius: 6px;
+                padding: 6px 10px;
+                font-size: 11px;
+                font-weight: 700;
+                text-align: left;
+            }}
+            QPushButton:hover {{
+                border-color: {accent};
+                color: #FFFFFF;
+            }}
+            QPushButton:checked {{
+                background-color: {accent_soft};
+                border-color: {accent};
+                color: #FFFFFF;
+            }}
+        """
+        for btn_name in ("btn_toggle_bar_counts", "btn_toggle_rhyme_hl"):
+            btn = getattr(self, btn_name, None)
+            if btn:
+                btn.setStyleSheet(tool_toggle_qss)
+
+        if hasattr(self, "btn_fullscreen_preview"):
+            self.btn_fullscreen_preview.setStyleSheet(f"""
+                QPushButton {{
+                    background-color: {accent_soft};
+                    border: 1px solid {accent_border};
+                    color: #FFFFFF;
+                    border-radius: 6px;
+                    padding: 7px 10px;
+                    font-size: 11px;
+                    font-weight: 700;
+                }}
+                QPushButton:hover {{
+                    background-color: {accent};
+                    border-color: {accent_hover};
+                    color: #FFFFFF;
+                }}
+            """)
+
+        # About Card
+        if hasattr(self, "about_box"):
+            self.about_box.setStyleSheet(f"""
+                QFrame {{
+                    background-color: {bg_surface};
+                    border: 1px solid {border};
+                    border-top: 2px solid {accent};
+                    border-radius: 8px;
+                }}
+            """)
+        if hasattr(self, "lbl_about_hdr"):
+            self.lbl_about_hdr.setStyleSheet(f"""
+                color: {accent_hover};
+                font-size: 9px;
+                font-weight: 800;
+                letter-spacing: 1.5px;
+                border: none;
+                background: transparent;
+            """)
+        if hasattr(self, "lbl_ver_pill"):
+            self.lbl_ver_pill.setStyleSheet(f"""
+                background-color: {accent_soft};
+                border: 1px solid {accent_border};
+                color: #FFFFFF;
+                border-radius: 4px;
+                padding: 2px 6px;
+                font-family: 'Consolas', monospace;
+                font-size: 9px;
+                font-weight: 700;
+            """)
+        if hasattr(self, "btn_check_update"):
+            self.btn_check_update.setStyleSheet(f"""
+                QPushButton {{
+                    background-color: {bg_elevated};
+                    border: 1px solid {border};
+                    color: #E4E4E7;
+                    border-radius: 5px;
+                    padding: 4px 8px;
+                    font-size: 10px;
+                    font-weight: 700;
+                }}
+                QPushButton:hover {{
+                    background-color: {accent_soft};
+                    border-color: {accent};
+                    color: #FFFFFF;
+                }}
+                QPushButton:disabled {{
+                    color: #6E6D7A;
+                    border-color: {border};
+                }}
+            """)
 
     def _sync_editor_tool_buttons(self):
         show_counts = bool(self.studio_settings.get("show_gutter", True))
@@ -7083,6 +8291,164 @@ class NocturneMainWindow(QMainWindow):
         if isinstance(line_idx, int):
             self.lyric_editor.jump_to_line(line_idx)
 
+    def _tick_rhyme_spinner(self):
+        self._rhyme_spin_idx = (self._rhyme_spin_idx + 1) % len(self._rhyme_spin_frames)
+        self.lbl_rhyme_loading.setText(self._rhyme_spin_frames[self._rhyme_spin_idx])
+
+    def set_rhyme_loading(self, active: bool):
+        if active:
+            if not self._rhyme_spin_timer.isActive():
+                self._rhyme_spin_idx = 0
+                self.lbl_rhyme_loading.setText(self._rhyme_spin_frames[0])
+                self.lbl_rhyme_loading.setVisible(True)
+                self._rhyme_spin_timer.start()
+        else:
+            self._rhyme_spin_timer.stop()
+            self.lbl_rhyme_loading.setVisible(False)
+
+    def _on_rhyme_worker_finished(self, worker, job_id: int):
+        self._cleanup_worker(worker)
+        if job_id == self._rhyme_lookup_job_id:
+            self.set_rhyme_loading(False)
+
+    def check_github_updates(self, silent: bool = False):
+        if getattr(self, "_update_check_running", False):
+            return
+        self._update_check_running = True
+        self._update_check_silent = silent
+        self.btn_check_update.setEnabled(False)
+        self.btn_check_update.setText("Checking GitHub...")
+
+        worker = GitHubUpdateCheckWorker()
+        worker.check_done.connect(self._on_github_update_checked)
+        self._active_workers.append(worker)
+        worker.finished.connect(lambda wk=worker: self._cleanup_worker(wk))
+        worker.start()
+
+    def _on_github_update_checked(self, info: dict):
+        self._update_check_running = False
+        self.btn_check_update.setEnabled(True)
+        silent = getattr(self, "_update_check_silent", False)
+
+        if not info.get("ok"):
+            self.btn_check_update.setText("↻ Check for Updates")
+            if not silent:
+                QMessageBox.warning(
+                    self,
+                    "Update Check Failed",
+                    f"Could not connect to GitHub Releases.\n\nDetails: {info.get('error', 'Unknown error')}",
+                )
+            return
+
+        if info.get("has_update"):
+            self._latest_release_info = info
+            tag = info.get("latest_tag", "New")
+            self.lbl_ver_pill.setText(f"⬆ {tag} AVAILABLE")
+            self.lbl_ver_pill.setStyleSheet("""
+                background-color: #2A214A;
+                border: 1px solid #9483E8;
+                color: #FFFFFF;
+                border-radius: 4px;
+                padding: 2px 6px;
+                font-family: 'Consolas', monospace;
+                font-size: 9px;
+                font-weight: 800;
+            """)
+            self.btn_check_update.setText(f"⬇ Install {tag}")
+            if not silent:
+                self._prompt_install_github_update(info)
+        else:
+            self.btn_check_update.setText("✓ Up to Date")
+            QTimer.singleShot(4000, lambda: self.btn_check_update.setText("↻ Check for Updates"))
+            if not silent:
+                QMessageBox.information(
+                    self,
+                    "Nocturne Up to Date",
+                    f"You are running the latest version of Nocturne (v{APP_VERSION}).",
+                )
+
+    def _prompt_install_github_update(self, info: dict):
+        tag = info.get("latest_tag", "")
+        notes = info.get("notes", "")
+        asset_url = info.get("asset_url", "")
+        html_url = info.get("html_url", f"https://github.com/{GITHUB_REPO}/releases")
+
+        msg = QMessageBox(self)
+        msg.setWindowTitle(f"Update Available — {tag}")
+        msg.setIcon(QMessageBox.Information)
+        msg.setText(f"A new version of Nocturne ({tag}) is available!\nCurrent version: v{APP_VERSION}")
+        msg.setInformativeText(f"Release Notes:\n{notes[:600]}")
+
+        btn_install = msg.addButton(
+            "Download & Install" if asset_url else "Open GitHub Release",
+            QMessageBox.AcceptRole,
+        )
+        msg.addButton("Later", QMessageBox.RejectRole)
+        msg.exec()
+
+        if msg.clickedButton() != btn_install:
+            return
+
+        if not asset_url:
+            QDesktopServices.openUrl(QUrl(html_url))
+            return
+
+        self._start_github_asset_download(info)
+
+    def _start_github_asset_download(self, info: dict):
+        asset_url = info["asset_url"]
+        asset_name = info.get("asset_name") or "Nocturne_update.exe"
+        dest_path = os.path.join(tempfile.gettempdir(), asset_name)
+
+        self.btn_check_update.setEnabled(False)
+        self.btn_check_update.setText("Downloading 0%...")
+
+        dl_worker = GitHubUpdateDownloadWorker(asset_url, dest_path)
+        dl_worker.progress.connect(lambda pct: self.btn_check_update.setText(f"Downloading {pct}%..."))
+        dl_worker.download_done.connect(lambda ok, res: self._on_github_download_done(ok, res, info))
+        self._active_workers.append(dl_worker)
+        dl_worker.finished.connect(lambda wk=dl_worker: self._cleanup_worker(wk))
+        dl_worker.start()
+
+    def _on_github_download_done(self, ok: bool, result: str, info: dict):
+        self.btn_check_update.setEnabled(True)
+        self.btn_check_update.setText("↻ Check for Updates")
+
+        if not ok:
+            QMessageBox.warning(self, "Download Failed", f"Failed to download update:\n{result}")
+            return
+
+        downloaded_file = result
+        # Jika dijalankan sebagai .exe (PyInstaller frozen) dan asset ialah .exe
+        if getattr(sys, "frozen", False) and downloaded_file.lower().endswith(".exe"):
+            current_exe = sys.executable
+            bat_path = os.path.join(tempfile.gettempdir(), "nocturne_self_update.bat")
+            bat_code = (
+                "@echo off\r\n"
+                "timeout /t 2 /nobreak >nul\r\n"
+                f'move /y "{downloaded_file}" "{current_exe}"\r\n'
+                f'start "" "{current_exe}"\r\n'
+                'del "%~f0"\r\n'
+            )
+            with open(bat_path, "w", encoding="utf-8") as bf:
+                bf.write(bat_code)
+
+            QMessageBox.information(
+                self,
+                "Ready to Restart",
+                "Update downloaded! Nocturne will now close, apply the update, and restart automatically.",
+            )
+            subprocess.Popen(["cmd", "/c", bat_path], creationflags=0x08000000)
+            QApplication.quit()
+        else:
+            # Jika dijalankan dari Python source (.py) atau asset ialah .zip
+            QMessageBox.information(
+                self,
+                "Update Downloaded",
+                f"Update saved to:\n{downloaded_file}\n\nOpening folder now.",
+            )
+            QDesktopServices.openUrl(QUrl.fromLocalFile(os.path.dirname(downloaded_file)))
+
     def lookup_rhyme_word(self, word: str, from_live: bool = False, force_refresh: bool = False):
         w = word.strip()
         if not w:
@@ -7095,15 +8461,17 @@ class NocturneMainWindow(QMainWindow):
             self.rhyme_search_input.setText(w)
 
         if w_key in self._rhyme_lookup_cache:
+            self.set_rhyme_loading(False)
             self._apply_rhyme_lookup_result(w, from_live, self._rhyme_lookup_cache[w_key])
             return
 
         self._rhyme_lookup_job_id += 1
         job_id = self._rhyme_lookup_job_id
+        self.set_rhyme_loading(True)
         worker = RhymeLookupWorker(job_id, w, from_live)
         worker.lookup_done.connect(self._on_async_rhyme_lookup_done)
         self._active_workers.append(worker)
-        worker.finished.connect(lambda wk=worker: self._cleanup_worker(wk))
+        worker.finished.connect(lambda wk=worker, jid=job_id: self._on_rhyme_worker_finished(wk, jid))
         worker.start()
 
     def _on_async_rhyme_lookup_done(self, job_id: int, word: str, from_live: bool, data: dict):
@@ -7113,6 +8481,11 @@ class NocturneMainWindow(QMainWindow):
         if job_id != self._rhyme_lookup_job_id:
             return
         self._apply_rhyme_lookup_result(word, from_live, data)
+
+    def _on_rhyme_worker_finished(self, worker, job_id: int):
+        self._cleanup_worker(worker)
+        if job_id == self._rhyme_lookup_job_id:
+            self.set_rhyme_loading(False)
 
     def _apply_rhyme_lookup_result(self, word: str, from_live: bool, data: dict):
         self._last_inspected_word = word.lower()
@@ -7201,7 +8574,7 @@ class NocturneMainWindow(QMainWindow):
 
     def insert_rhyme_into_editor(self, item: QListWidgetItem):
         raw = item.text()
-        word = re.sub(r"\s*\[.*?\]|\s*\(slang\)|\s*🔥", "", raw).strip()
+        word = re.sub(r"\s*[·•]\d+s|\s*\[.*?\]|\s*\(slang\)|\s*🔥", "", raw).strip()
         cursor = self.lyric_editor.textCursor()
         cursor.insertText(word + " ")
         self.lyric_editor.setFocus()
@@ -8019,12 +9392,17 @@ if __name__ == "__main__":
     app = QApplication(sys.argv)
     app.setWindowIcon(get_nocturne_app_icon())
 
-    base_font = safe_qfont("Segoe UI", 10, bold=False)
+    register_local_fonts()
+    base_font = safe_qfont("SF-Pro-Display-Regular", 10, bold=False)
     app.setFont(base_font)
 
-    register_local_fonts()
+    def _on_sf_fonts_ready():
+        register_local_fonts()
+        app.setFont(safe_qfont("SF-Pro-Display-Regular", 10, bold=False))
+        app.setStyleSheet(build_obsidian_qss())
+
     sf_worker = SFProProvisionWorker()
-    sf_worker.fonts_installed.connect(register_local_fonts)
+    sf_worker.fonts_installed.connect(_on_sf_fonts_ready)
     sf_worker.start()
 
     app.setStyleSheet(build_obsidian_qss())
