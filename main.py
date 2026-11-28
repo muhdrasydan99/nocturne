@@ -29,11 +29,11 @@ from PySide6.QtGui import (
 from PySide6.QtMultimedia import QMediaPlayer, QAudioOutput, QSoundEffect
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
-    QPlainTextEdit, QTextEdit, QLabel, QPushButton, QLineEdit,
+    QPlainTextEdit, QTextEdit, QLabel, QPushButton, QToolButton, QLineEdit,
     QListWidget, QListWidgetItem, QSplitter, QFileDialog,
     QSlider, QTabWidget, QFrame, QToolTip, QSpinBox, QMessageBox,
     QDialog, QGridLayout, QInputDialog, QCheckBox, QComboBox, QFormLayout,
-    QProgressBar, QScrollArea, QSizePolicy, QMenu, QButtonGroup
+    QProgressBar, QScrollArea, QSizePolicy, QMenu, QButtonGroup, QStackedWidget
 )
 
 from lyric_engine import (
@@ -79,7 +79,7 @@ def safe_qfont(family: str, size: int, bold: bool = False) -> QFont:
     return qf
 
 # =====================================================================
-# NOCTURNE THEMES (v1.1.0 UPDATE)
+# NOCTURNE THEMES (v1.2.0 UPDATE)
 # =====================================================================
 
 NOCTURNE_THEMES = {
@@ -289,6 +289,7 @@ def build_obsidian_qss(theme_id: str = "purple") -> str:
     accent_hover = t["accent_hover"]
     accent_soft = t["accent_soft"]
     accent_border = t["accent_border"]
+    accent_fg = t.get("accent_fg", "#FFFFFF")
     arrow_url = build_dropdown_arrow_svg()
 
     return f"""
@@ -312,7 +313,159 @@ QSplitter::handle:hover {{
 QFrame#PanelCard {{
     background-color: transparent;
     border: 1px solid {border};
+    border-radius: 14px;
+}}
+QFrame#SidePanel {{
+    background-color: {bg_surface};
+    border: none;
+}}
+QFrame#CenterPanel {{
+    background-color: {bg_base};
+    border: none;
+}}
+QScrollArea#SideScroll {{
+    background-color: transparent;
+    border: none;
+}}
+QScrollArea#HomeScroll {{
+    background-color: transparent;
+    border: none;
+}}
+QWidget#HomeScrollBody {{
+    background-color: transparent;
+}}
+QWidget#RightScrollBody {{
+    background-color: transparent;
+}}
+QFrame#TrackHeader {{
+    background-color: transparent;
+    border: none;
+    border-bottom: 1px solid {border};
+}}
+QFrame#TransportBar {{
+    background-color: {bg_surface};
+    border: 1px solid {border};
+    border-radius: 14px;
+}}
+QFrame#PenDock {{
+    background-color: {bg_surface};
+    border: none;
+    border-top: 1px solid {border};
+}}
+QFrame#SideDivider {{
+    background-color: {border};
+    border: none;
+}}
+QFrame#CollapsibleSection, QWidget#SectionBody {{
+    background-color: transparent;
+    border: none;
+}}
+QPushButton#NavBtn {{
+    background-color: transparent;
+    border: 1px solid transparent;
+    border-radius: 9px;
+    color: #C9C6DA;
+    padding: 7px 10px;
+    text-align: left;
+    font-size: 12px;
+    font-weight: 600;
+}}
+QPushButton#NavBtn:hover {{
+    background-color: {accent_soft};
+    border-color: {accent_border};
+    color: #FFFFFF;
+}}
+QPushButton#NavBtn:checked {{
+    background-color: {accent_soft};
+    border: 1px solid {accent_border};
+    border-left: 3px solid {accent};
+    color: #FFFFFF;
+    padding-left: 12px;
+}}
+QToolButton#SectionToggle {{
+    background-color: transparent;
+    border: none;
+    color: #E4E4E7;
+    font-size: 10px;
+    font-weight: 800;
+    letter-spacing: 1.4px;
+    padding: 5px 2px;
+    text-align: left;
+}}
+QToolButton#SectionToggle:hover {{
+    color: {accent_hover};
+}}
+QLineEdit#TrackTitleInput {{
+    background-color: transparent;
+    border: none;
+    color: #FFFFFF;
+    font-size: 24px;
+    font-weight: 800;
+    padding: 0px;
+}}
+QLabel#SectionMarker {{
+    color: {accent_hover};
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 1.6px;
+}}
+QLabel#Eyebrow {{
+    color: #77748A;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 1.5px;
+}}
+QLabel#HomeTitle {{
+    background-color: transparent;
+    color: #FFFFFF;
+    font-size: 34px;
+    font-weight: 800;
+    letter-spacing: -0.5px;
+}}
+QLabel#HomeHint {{
+    background: transparent;
+    border: none;
+    color: #77748A;
+    font-size: 11px;
+    font-weight: 600;
+}}
+QFrame#TrackCard {{
+    background-color: {bg_surface};
+    border: 1px solid {border};
     border-radius: 12px;
+}}
+QFrame#TrackCard:hover {{
+    background-color: {bg_elevated};
+    border-color: {accent};
+}}
+QLabel#TrackCardTitle {{
+    background: transparent;
+    border: none;
+    color: #FFFFFF;
+    font-size: 13px;
+    font-weight: 800;
+}}
+QLabel#TrackCardMeta {{
+    background: transparent;
+    border: none;
+    color: #77748A;
+    font-size: 10px;
+    font-weight: 600;
+}}
+QLabel#StatPill {{
+    background-color: {accent_soft};
+    border: 1px solid {accent_border};
+    color: {accent_fg};
+    border-radius: 9px;
+    padding: 2px 8px;
+    font-size: 10px;
+    font-weight: 800;
+}}
+QLabel#PenCaption {{
+    color: #77748A;
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 1.2px;
 }}
 QFrame#ProfileCard {{
     background-color: {bg_surface};
@@ -354,7 +507,7 @@ QPushButton {{
     background-color: {bg_surface};
     color: #F4F4F5;
     border: 1px solid {border};
-    border-radius: 8px;
+    border-radius: 10px;
     padding: 6px 12px;
     font-weight: 600;
 }}
@@ -5809,7 +5962,7 @@ class FullScreenLyricPreviewDialog(QDialog):
         super().closeEvent(event)
 
 
-APP_VERSION = "1.1.0 BETA"
+APP_VERSION = "1.2.0"
 GITHUB_REPO = "muhdrasydan99/nocturne"
 GITHUB_LATEST_API = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
 
@@ -6076,6 +6229,122 @@ class LyricsAnalyzerDialog(QDialog):
             f"EXERCISE:\n{res.get('exercise', '')}\n\nNEXT STEP:\n{res.get('next_step', '')}"
         )
 
+class CollapsibleSection(QFrame):
+    """Compact right-inspector section with an expand/collapse header."""
+
+    def __init__(self, title: str, expanded: bool = True, parent=None):
+        super().__init__(parent)
+        self.setObjectName("CollapsibleSection")
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(0, 0, 0, 0)
+        outer.setSpacing(4)
+        self.toggle_btn = QToolButton()
+        self.toggle_btn.setObjectName("SectionToggle")
+        # Escape ampersands so they are displayed literally, not treated as mnemonics.
+        self.toggle_btn.setText(title.upper().replace("&", "&&"))
+        self.toggle_btn.setCheckable(True)
+        self.toggle_btn.setChecked(bool(expanded))
+        self.toggle_btn.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
+        self.toggle_btn.setArrowType(Qt.DownArrow if expanded else Qt.RightArrow)
+        self.toggle_btn.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        self.toggle_btn.setCursor(Qt.PointingHandCursor)
+        self.toggle_btn.toggled.connect(self._set_expanded)
+        outer.addWidget(self.toggle_btn)
+        self.body = QWidget()
+        self.body.setObjectName("SectionBody")
+        self.body_layout = QVBoxLayout(self.body)
+        self.body_layout.setContentsMargins(0, 0, 0, 6)
+        self.body_layout.setSpacing(8)
+        outer.addWidget(self.body)
+        self.body.setVisible(bool(expanded))
+
+    def _set_expanded(self, expanded: bool):
+        self.body.setVisible(bool(expanded))
+        self.toggle_btn.setArrowType(Qt.DownArrow if expanded else Qt.RightArrow)
+
+    def addWidget(self, widget):
+        self.body_layout.addWidget(widget)
+        return widget
+
+    def addLayout(self, layout):
+        self.body_layout.addLayout(layout)
+        return layout
+
+
+class MiniWaveform(QWidget):
+    """Deterministic little waveform thumbnail for recent-track cards (no font glyphs needed)."""
+
+    def __init__(self, seed_text: str, accent_provider, parent=None):
+        super().__init__(parent)
+        digest = hashlib.md5((seed_text or "track").encode("utf-8")).digest()
+        self._seed = int.from_bytes(digest[:4], "big") or 1
+        self._accent_provider = accent_provider
+        self.setFixedSize(74, 38)
+
+    def paintEvent(self, _event):
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.Antialiasing)
+        try:
+            accent = QColor(self._accent_provider())
+        except Exception:
+            accent = QColor("#8B5CF6")
+        bars = 18
+        gap = 2
+        bar_w = max(2, (self.width() - gap * (bars - 1)) // bars)
+        mid = self.height() // 2
+        rnd = self._seed
+        painter.setPen(Qt.NoPen)
+        for i in range(bars):
+            rnd = (rnd * 1103515245 + 12345) & 0x7FFFFFFF
+            h = 6 + (rnd % (self.height() - 8))
+            x = i * (bar_w + gap)
+            color = QColor(accent)
+            color.setAlpha(120 + (rnd % 120))
+            painter.setBrush(QBrush(color))
+            painter.drawRoundedRect(QRect(x, mid - h // 2, bar_w, h), 2, 2)
+        painter.end()
+
+
+class ProjectThumb(QWidget):
+    """Deterministic album-style waveform thumbnail for project rows (paints nothing but bars)."""
+
+    def __init__(self, seed_text: str, palette_provider, size=(52, 40), parent=None):
+        super().__init__(parent)
+        digest = hashlib.md5((seed_text or "track").encode("utf-8")).digest()
+        self._seed = int.from_bytes(digest[:4], "big") or 1
+        self._palette_provider = palette_provider
+        self.setFixedSize(*size)
+
+    def paintEvent(self, _event):
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.Antialiasing)
+        try:
+            pal = self._palette_provider()
+        except Exception:
+            pal = get_theme_palette("purple")
+        accent = QColor(pal.get("accent", "#8B5CF6"))
+        # rounded plate
+        painter.setPen(Qt.NoPen)
+        painter.setBrush(QBrush(QColor(pal.get("bg_elevated", "#101018"))))
+        painter.drawRoundedRect(self.rect().adjusted(0, 0, -1, -1), 8, 8)
+        bars = 9
+        usable_w = self.width() - 8
+        inner_w = min(usable_w, bars * 6)
+        x0 = (self.width() - inner_w) // 2
+        step = inner_w // bars
+        bar_w = max(2, step - 2)
+        mid = self.height() // 2
+        rnd = self._seed
+        for i in range(bars):
+            rnd = (rnd * 1103515245 + 12345) & 0x7FFFFFFF
+            h = 6 + (rnd % max(6, self.height() - 14))
+            color = QColor(accent)
+            color.setAlpha(150 + (rnd % 90))
+            painter.setBrush(QBrush(color))
+            painter.drawRoundedRect(QRect(x0 + i * step, mid - h // 2, bar_w, h), 1, 1)
+        painter.end()
+
+
 class NocturneMainWindow(QMainWindow):
     def __init__(self, profiles_root: str, profile_name: str, on_switch_profile_callback):
         super().__init__()
@@ -6133,8 +6402,8 @@ class NocturneMainWindow(QMainWindow):
         self.metro_sync_timer.setTimerType(Qt.PreciseTimer)
         self.metro_sync_timer.setInterval(4)
         self.metro_sync_timer.timeout.connect(self._poll_metronome_master_clock)
-        self._last_left_width = 330
-        self._last_right_width = 360
+        self._last_left_width = 260
+        self._last_right_width = 330
 
         self.search_matches = []
         self.current_search_idx = -1
@@ -6170,6 +6439,9 @@ class NocturneMainWindow(QMainWindow):
         self.load_profile_settings()
         self.load_vault_list()
         self.load_starter_demo()
+        # Land on the Home dashboard (recent tracks & scrapbook); the resumed
+        # track stays loaded in the workspace behind the Lyrics tab.
+        self.show_workspace_page("home")
         self._warm_rhyme_index()
 
         find_sc = QShortcut(QKeySequence("Ctrl+F"), self)
@@ -6224,7 +6496,7 @@ class NocturneMainWindow(QMainWindow):
         super().closeEvent(event)
 
         # 4. Jika bukan sedang tukar profil, tamatkan keseluruhan proses PyInstaller
-        if not getattr(self, "_switching_profile", False):
+        if not getattr(self, "_switching_profile", False) and not getattr(self, "switch_requested", False):
             QApplication.processEvents()
             QApplication.quit()
             os._exit(0)
@@ -6325,81 +6597,19 @@ class NocturneMainWindow(QMainWindow):
         central = QWidget()
         self.setCentralWidget(central)
         root_layout = QVBoxLayout(central)
-        root_layout.setContentsMargins(10, 10, 10, 10)
-        root_layout.setSpacing(8)
+        root_layout.setContentsMargins(0, 0, 0, 0)
+        root_layout.setSpacing(0)
 
-        # --- TOP BAR ---
-        top_bar = QFrame()
-        top_bar.setObjectName("PanelCard")
-        top_bar.setFixedHeight(56)
-        top_bar.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
-        top_layout = QHBoxLayout(top_bar)
-        top_layout.setContentsMargins(12, 6, 12, 6)
-        top_layout.setSpacing(8)
 
-        app_icon_lbl = QLabel()
-        app_icon_lbl.setPixmap(create_nocturne_icon_pixmap(30))
-        app_icon_lbl.setFixedSize(30, 30)
-        top_layout.addWidget(app_icon_lbl)
+        analysis_sec = CollapsibleSection("Analyzer + Tools")
+        beat_sec = CollapsibleSection("Beat & Timing", expanded=False)
+        meta_sec = CollapsibleSection("About & Updates", expanded=False)
 
-        logo = QLabel("nocturne")
-        logo.setObjectName("TitleLogo")
-        top_layout.addWidget(logo)
-
-        self.btn_profile_cfg = QPushButton(f"👤 {self.profile_name}")
-        self.btn_profile_cfg.setObjectName("ProfileBtn")
-        self.btn_profile_cfg.setFixedHeight(32)
-        self.btn_profile_cfg.setToolTip("Edit Profile (Rename, PIN Lock, Backup .ZIP)")
-        self.btn_profile_cfg.clicked.connect(self.open_active_profile_settings)
-        top_layout.addWidget(self.btn_profile_cfg)
-
-        btn_switch = QPushButton("⇄")
-        btn_switch.setToolTip("Switch Profile")
-        btn_switch.setFixedSize(36, 32)
-        btn_switch.clicked.connect(self.trigger_profile_switch)
-        top_layout.addWidget(btn_switch)
-
-        self.track_title_input = QLineEdit("Untitled_Track_01")
-        self.track_title_input.setFixedSize(185, 32)
-        self.track_title_input.setPlaceholderText("Track Title...")
-        self.track_title_input.textChanged.connect(self.schedule_realtime_vault_update)
-        self.track_title_input.textChanged.connect(
-            lambda txt: self.setWindowTitle(f"nocturne | {self.profile_name} — {txt.strip() or 'Untitled_Track_01'}")
-        )
-        top_layout.addWidget(self.track_title_input)
-
-        btn_save = QPushButton("Save Track")
-        btn_save.setObjectName("PrimaryBtn")
-        btn_save.setFixedHeight(32)
-        btn_save.clicked.connect(self.save_track)
-        top_layout.addWidget(btn_save)
-
-        btn_new = QPushButton("+ New")
-        btn_new.setFixedHeight(32)
-        btn_new.setToolTip("Create a new track and immediately add it to the Vault")
-        btn_new.clicked.connect(self.new_track)
-        top_layout.addWidget(btn_new)
-
-        btn_lexicon = QPushButton("📚 +add-ons")
-        btn_lexicon.setFixedHeight(32)
-        btn_lexicon.clicked.connect(self.open_lexicon_manager)
-        top_layout.addWidget(btn_lexicon)
-
-        top_layout.addStretch()
-
-        self.stat_rhymes = QLabel("RHYMES: 0")
-        self.stat_rhymes.setObjectName("BadgeStat")
-        self.stat_rhymes.setFixedHeight(30)
-        top_layout.addWidget(self.stat_rhymes)
-
-        btn_gear = QPushButton("⚙")
-        btn_gear.setObjectName("GearBtn")
-        btn_gear.setFixedSize(38, 32)
-        btn_gear.setToolTip("Nocturne Studio Settings")
-        btn_gear.clicked.connect(self.open_studio_settings)
-        top_layout.addWidget(btn_gear)
-
-        root_layout.addWidget(top_bar, 0)
+        pen_dock = QFrame()
+        pen_dock.setObjectName("PenDock")
+        pen_layout = QVBoxLayout(pen_dock)
+        pen_layout.setContentsMargins(12, 10, 12, 12)
+        pen_layout.setSpacing(6)
 
         # --- MAIN 3-PANE SPLITTER ---
         self.main_splitter = QSplitter(Qt.Horizontal)
@@ -6408,65 +6618,111 @@ class NocturneMainWindow(QMainWindow):
         self.main_splitter.setHandleWidth(5)
 
         # ==========================================
-        # LEFT PANE
+        # LEFT PANE — brand, navigation, track explorer
         # ==========================================
         self.left_panel = QFrame()
-        self.left_panel.setObjectName("PanelCard")
-        self.left_panel.setMinimumWidth(315)
-        self.left_panel.setMaximumWidth(440)
-        left_outer_layout = QVBoxLayout(self.left_panel)
-        left_outer_layout.setContentsMargins(2, 2, 2, 2)
-        left_outer_layout.setSpacing(0)
+        self.left_panel.setObjectName("SidePanel")
+        self.left_panel.setMinimumWidth(260)
+        self.left_panel.setMaximumWidth(340)
+        left_layout = QVBoxLayout(self.left_panel)
+        left_layout.setContentsMargins(16, 16, 16, 14)
+        left_layout.setSpacing(6)
 
-        left_scroll = QScrollArea()
-        left_scroll.setWidgetResizable(True)
-        left_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-        left_scroll_body = QWidget()
-        left_scroll_body.setStyleSheet("background-color: transparent;")
-        left_layout = QVBoxLayout(left_scroll_body)
-        left_layout.setContentsMargins(10, 10, 10, 12)
-        left_layout.setSpacing(8)
-
-        vault_hdr_row = QHBoxLayout()
-        self.vault_header_lbl = QLabel(f"the vault | {self.profile_name.upper()}", objectName="SectionHeader")
-        self.vault_header_lbl.setTextFormat(Qt.PlainText)
-        vault_hdr_row.addWidget(self.vault_header_lbl)
-        vault_hdr_row.addStretch()
-
+        brand_row = QHBoxLayout()
+        brand_row.setSpacing(9)
+        app_icon_lbl = QLabel()
+        app_icon_lbl.setPixmap(create_nocturne_icon_pixmap(28))
+        app_icon_lbl.setFixedSize(28, 28)
+        brand_row.addWidget(app_icon_lbl)
+        logo = QLabel("nocturne")
+        logo.setObjectName("TitleLogo")
+        brand_row.addWidget(logo)
+        brand_row.addStretch()
         btn_hide_left_inline = QPushButton("◀")
         btn_hide_left_inline.setObjectName("EdgeArrowBtn")
         btn_hide_left_inline.setFixedSize(24, 22)
         btn_hide_left_inline.setToolTip("Collapse Left Sidebar")
         btn_hide_left_inline.clicked.connect(lambda: self.set_left_sidebar_visible(False))
-        vault_hdr_row.addWidget(btn_hide_left_inline)
-        left_layout.addLayout(vault_hdr_row)
+        brand_row.addWidget(btn_hide_left_inline)
+        left_layout.addLayout(brand_row)
+        left_layout.addSpacing(10)
+
+        nav_group = QButtonGroup(self)
+        nav_group.setExclusive(True)
+
+        def _add_nav(text, tooltip, slot, checked=False):
+            btn = QPushButton(text)
+            btn.setObjectName("NavBtn")
+            # Only the persistent workspace item is a stateful nav tab. The rest
+            # are one-shot actions (focus editor, open analyzer/add-ons), so they
+            # must not stay highlighted after their dialog closes.
+            btn.setCheckable(checked)
+            btn.setChecked(checked)
+            btn.setCursor(Qt.PointingHandCursor)
+            btn.setToolTip(tooltip)
+            btn.clicked.connect(slot)
+            nav_group.addButton(btn)
+            if not checked:
+                # One-shot actions (dialogs) must not clear the active tab highlight.
+                btn.clicked.connect(self._sync_nav_highlight)
+            left_layout.addWidget(btn)
+            return btn
+
+        self.nav_home = _add_nav(
+            "Home",
+            "Home dashboard — greeting, search, recent tracks & scrapbook",
+            lambda: self.show_workspace_page("home"),
+            True,
+        )
+        self.nav_lyrics = _add_nav(
+            "Lyrics",
+            "Open the lyric workspace",
+            lambda: self.show_workspace_page("lyrics"),
+            True,
+        )
+        _add_nav("Analysis", "Open Lyrics Analyzer for craft feedback, exercises & finishing plan", self._open_lyrics_analyzer)
+        self.nav_tools = _add_nav(
+            "Tools",
+            "Tools menu — Add-ons, Full Vault, Import / Export & Analysis",
+            self._open_tools_menu,
+        )
+        left_layout.addSpacing(10)
+
+        explorer_hdr = QHBoxLayout()
+        explorer_hdr.setSpacing(4)
+        self.vault_header_lbl = QLabel("TRACK EXPLORER", objectName="SectionHeader")
+        self.vault_header_lbl.setTextFormat(Qt.PlainText)
+        explorer_hdr.addWidget(self.vault_header_lbl)
+        explorer_hdr.addStretch()
+        btn_new_track = QPushButton("+")
+        btn_new_track.setObjectName("EdgeArrowBtn")
+        btn_new_track.setFixedSize(24, 22)
+        btn_new_track.setToolTip("Create a new track and immediately add it to the Vault")
+        btn_new_track.clicked.connect(self.new_track)
+        explorer_hdr.addWidget(btn_new_track)
+        left_layout.addLayout(explorer_hdr)
 
         self.vault_search_input = QLineEdit()
-        self.vault_search_input.setPlaceholderText("🔍 Filter tracks by title or lyrics...")
+        self.vault_search_input.setPlaceholderText("Filter tracks by title or lyrics...")
         self.vault_search_input.textChanged.connect(self.load_vault_list)
         left_layout.addWidget(self.vault_search_input)
 
         self.vault_list = QListWidget()
-        self.vault_list.setMinimumHeight(74)
-        self.vault_list.setMaximumHeight(92)
+        self.vault_list.setMinimumHeight(120)
         self.vault_list.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self.vault_list.setVerticalScrollMode(QListWidget.ScrollPerPixel)
         self.vault_list.setStyleSheet("QListWidget::item { padding: 3px 6px; font-size: 11px; }")
         self.vault_list.setContextMenuPolicy(Qt.CustomContextMenu)
         self.vault_list.customContextMenuRequested.connect(self.show_vault_context_menu)
         self.vault_list.itemClicked.connect(self.open_track_from_vault)
-        left_layout.addWidget(self.vault_list)
+        left_layout.addWidget(self.vault_list, 1)
 
         vault_actions_row = QHBoxLayout()
         vault_actions_row.setSpacing(4)
 
-        btn_full_vault = QPushButton("⛶ full vault")
-        btn_full_vault.setStyleSheet("padding: 4px 7px; font-size: 11px;")
-        btn_full_vault.setToolTip("Open Full Vault Window")
-        btn_full_vault.clicked.connect(lambda: self.open_full_vault_dialog(start_tab=0))
-        vault_actions_row.addWidget(btn_full_vault, 2)
-
-        self.btn_recycle_bin = QPushButton("🗑 bin (0)")
+        # The Full Vault window is reachable from the explorer context menu,
+        # the Tools nav menu and every project row's ••• menu — no sidebar button.
+        self.btn_recycle_bin = QPushButton("Bin (0)")
         self.btn_recycle_bin.setStyleSheet("padding: 4px 7px; font-size: 11px;")
         self.btn_recycle_bin.setToolTip("Open Recycle Bin to Restore or Permanently Delete Tracks")
         self.btn_recycle_bin.clicked.connect(lambda: self.open_full_vault_dialog(start_tab=1))
@@ -6481,9 +6737,36 @@ class NocturneMainWindow(QMainWindow):
         vault_actions_row.addWidget(btn_del_vault_item)
 
         left_layout.addLayout(vault_actions_row)
+        left_layout.addSpacing(8)
+
+        sidebar_divider = QFrame()
+        sidebar_divider.setObjectName("SideDivider")
+        sidebar_divider.setFixedHeight(1)
+        left_layout.addWidget(sidebar_divider)
+
+        btn_settings = QPushButton("Settings")
+        btn_settings.setObjectName("NavBtn")
+        btn_settings.setCursor(Qt.PointingHandCursor)
+        btn_settings.setToolTip("Nocturne Studio Settings")
+        btn_settings.clicked.connect(self.open_studio_settings)
+        left_layout.addWidget(btn_settings)
+
+        profile_row = QHBoxLayout()
+        profile_row.setSpacing(4)
+        self.btn_profile_cfg = QPushButton(f"{self.profile_name}")
+        self.btn_profile_cfg.setObjectName("ProfileBtn")
+        self.btn_profile_cfg.setFixedHeight(34)
+        self.btn_profile_cfg.setToolTip("Edit Profile (Rename, PIN Lock, Backup .ZIP)")
+        self.btn_profile_cfg.clicked.connect(self.open_active_profile_settings)
+        profile_row.addWidget(self.btn_profile_cfg, 1)
+        btn_switch = QPushButton("↔")
+        btn_switch.setToolTip("Switch Profile")
+        btn_switch.setFixedSize(36, 34)
+        btn_switch.clicked.connect(self.trigger_profile_switch)
+        profile_row.addWidget(btn_switch)
+        left_layout.addLayout(profile_row)
 
         # Beat Deck + Metronome
-        left_layout.addWidget(QLabel("beat player", objectName="SectionHeader"))
         t_init = get_theme_palette(getattr(self, "studio_settings", {}).get("theme", "purple"))
         self.beat_box = QFrame()
         self.beat_box.setStyleSheet(
@@ -6495,55 +6778,44 @@ class NocturneMainWindow(QMainWindow):
         self.beat_label = ElidedLabel("no beat loaded")
         self.beat_label.setTextFormat(Qt.PlainText)
         self.beat_label.setStyleSheet("color: #D4D4D8; font-size: 11px; font-weight: 600; border: none;")
-        beat_layout.addWidget(self.beat_label)
 
-        beat_btns = QHBoxLayout()
-        beat_btns.setSpacing(4)
-        self.btn_load_beat = QPushButton("load")
-        self.btn_load_beat.setFixedHeight(26)
-        self.btn_load_beat.setStyleSheet("padding: 4px 6px; font-size: 11px;")
+        self.btn_load_beat = QPushButton("Load Beat")
+        self.btn_load_beat.setFixedHeight(32)
+        self.btn_load_beat.setStyleSheet("padding: 4px 10px; font-size: 11px;")
         self.btn_load_beat.clicked.connect(self.on_load_or_unload_beat_clicked)
 
-        self.btn_play_beat = QPushButton("▶ play")
-        self.btn_play_beat.setFixedSize(62, 26)
+        self.btn_play_beat = QPushButton("▶")
+        self.btn_play_beat.setFixedSize(44, 40)
+        self.btn_play_beat.setToolTip("Play / Pause the beat")
         self.btn_play_beat.clicked.connect(self.toggle_beat_playback)
 
-        self.btn_loop = QPushButton("🔁 loop on")
+        self.btn_loop = QPushButton("Loop: ON")
         self.btn_loop.setCheckable(True)
         self.btn_loop.setChecked(True)
-        self.btn_loop.setFixedSize(78, 26)
+        self.btn_loop.setFixedSize(96, 34)
         self.btn_loop.clicked.connect(self.toggle_loop)
 
-        beat_btns.addWidget(self.btn_load_beat, 1)
-        beat_btns.addWidget(self.btn_play_beat)
-        beat_btns.addWidget(self.btn_loop)
-        beat_layout.addLayout(beat_btns)
 
         self._update_play_button_state()
         self._update_loop_button_state()
 
-        # Seekbar + Time Readout Row
-        seek_row = QHBoxLayout()
-        seek_row.setSpacing(6)
+        # Seekbar + Time Readout (placed inside the transport bar)
         self.beat_seekbar = BeatSeekBar()
         self.beat_seekbar.scrub_started.connect(self._on_seek_scrub_started)
         self.beat_seekbar.seek_requested.connect(self._on_seek_requested)
         self.beat_seekbar.scrub_finished.connect(self._on_seek_scrub_finished)
-        seek_row.addWidget(self.beat_seekbar, 1)
 
         self.lbl_beat_time = QLabel("00:00 / 00:00")
         self.lbl_beat_time.setStyleSheet(
             "background: transparent; border: none; color: #D4D4D8; "
             "font-family: 'Consolas', monospace; font-size: 10px; font-weight: 700;"
         )
-        seek_row.addWidget(self.lbl_beat_time)
-        beat_layout.addLayout(seek_row)
 
         # Timestamp Marker Pinning & Section Jump Row
         marker_ctrl_row = QHBoxLayout()
         marker_ctrl_row.setSpacing(4)
 
-        self.btn_pin_marker = QPushButton("📍 Pin")
+        self.btn_pin_marker = QPushButton("Pin")
         self.btn_pin_marker.setFixedHeight(23)
         self.btn_pin_marker.setMinimumWidth(0)
         self.btn_pin_marker.setToolTip("Pin timestamp marker at current playback time (Ctrl+M)")
@@ -6565,7 +6837,7 @@ class NocturneMainWindow(QMainWindow):
         self.btn_pin_marker.clicked.connect(self.add_marker_at_current_time)
         marker_ctrl_row.addWidget(self.btn_pin_marker)
 
-        self.btn_stamp_line = QPushButton("⏱ Stamp")
+        self.btn_stamp_line = QPushButton("Stamp")
         self.btn_stamp_line.setFixedHeight(23)
         self.btn_stamp_line.setMinimumWidth(0)
         self.btn_stamp_line.setToolTip("Insert [MM:SS] timestamp on current lyric line (Ctrl+T)")
@@ -6632,22 +6904,12 @@ class NocturneMainWindow(QMainWindow):
         """)
         self.btn_tap_bpm.clicked.connect(self.on_tap_tempo)
         bpm_row.addWidget(self.btn_tap_bpm)
-
-        lbl_vol = QLabel("Vol:")
-        lbl_vol.setStyleSheet("background: transparent; border: none; font-size: 11px;")
-        bpm_row.addWidget(lbl_vol)
-
-        self.vol_slider = QSlider(Qt.Horizontal)
-        self.vol_slider.setRange(0, 100)
-        self.vol_slider.setValue(80)
-        self.vol_slider.setMinimumWidth(24)
-        self.vol_slider.valueChanged.connect(lambda v: self.audio_output.setVolume(v / 100.0))
-        bpm_row.addWidget(self.vol_slider, 1)
+        bpm_row.addStretch(1)
         beat_layout.addLayout(bpm_row)
 
         metro_row = QHBoxLayout()
         metro_row.setSpacing(3)
-        self.btn_metro = QPushButton("⏱ Metro: OFF")
+        self.btn_metro = QPushButton("Metro: OFF")
         self.btn_metro.setCheckable(True)
         self.btn_metro.setFixedSize(96, 24)
         self.btn_metro.setStyleSheet("padding: 3px 4px; font-size: 11px; font-weight: 600;")
@@ -6729,13 +6991,11 @@ class NocturneMainWindow(QMainWindow):
         metro_row.addWidget(self.btn_anchor_beat1)
 
         beat_layout.addLayout(metro_row)
-        left_layout.addWidget(self.beat_box)
+        beat_sec.addWidget(self.beat_box)
 
-# Punchline Vault (Scrapbook)
-        left_layout.addWidget(QLabel("scrapbook", objectName="SectionHeader"))
+        # Quick Scrapbook — lives on the Home dashboard (see build_home_page below)
         self.stash_editor = QPlainTextEdit()
-        self.stash_editor.setMinimumHeight(54)
-        self.stash_editor.setMaximumHeight(68)
+        self.stash_editor.setMinimumHeight(150)
         self.stash_editor.setPlaceholderText("Drop loose bars, hooks, or slang ideas here...")
         self.stash_editor.textChanged.connect(self.schedule_realtime_vault_update)
         self.stash_editor.setStyleSheet("""
@@ -6748,13 +7008,11 @@ class NocturneMainWindow(QMainWindow):
                 padding: 6px;
             }
         """)
-        left_layout.addWidget(self.stash_editor)
 
         # ==========================================
         # LYRICS ANALYZER (DIALOG LAUNCHER)
         # ==========================================
-        left_layout.addWidget(QLabel("LYRICS ANALYZER", objectName="SectionHeader"))
-        self.btn_coach_analyze = QPushButton("🎯 Analyze")
+        self.btn_coach_analyze = QPushButton("Analyze")
         self.btn_coach_analyze.setObjectName("PrimaryBtn")
         self.btn_coach_analyze.setMinimumWidth(0)
         self.btn_coach_analyze.setCursor(Qt.PointingHandCursor)
@@ -6775,10 +7033,11 @@ class NocturneMainWindow(QMainWindow):
         """)
         self.btn_coach_analyze.setToolTip("Open Lyrics Analyzer for craft feedback, exercises & finishing plan")
         self.btn_coach_analyze.clicked.connect(self._open_lyrics_analyzer)
-        left_layout.addWidget(self.btn_coach_analyze)
+        analysis_sec.addWidget(self.btn_coach_analyze)
 
         # Rate My Lyrics (Interactive Pen Meter)
-        left_layout.addWidget(QLabel("PEN METER", objectName="SectionHeader"))
+        pen_layout.addWidget(QLabel("PEN METER", objectName="SectionHeader"))
+        pen_layout.addWidget(QLabel("SOLID CADENCE", objectName="PenCaption"))
         t = get_theme_palette(getattr(self, "studio_settings", {}).get("theme", "purple"))
         self.rate_box = QFrame()
         self.rate_box.setStyleSheet(f"""
@@ -6806,16 +7065,16 @@ class NocturneMainWindow(QMainWindow):
         self.rate_tier_lbl.setStyleSheet(f"color: {t['accent_hover']}; font-size: 11px; font-weight: 800; letter-spacing: 0.4px; border: none;")
         mini_stats_col.addWidget(self.rate_tier_lbl)
 
-        self.mini_multie_lbl = QLabel("🔥 Rhyme: —  •  🌊 Flow: —")
+        self.mini_multie_lbl = QLabel("Rhyme: —  •  Flow: —")
         self.mini_multie_lbl.setStyleSheet("color: #A1A1AA; font-size: 10px; border: none;")
         mini_stats_col.addWidget(self.mini_multie_lbl)
 
-        self.mini_struct_lbl = QLabel("🏗 Structure: —  •  🧠 Vocab: —")
+        self.mini_struct_lbl = QLabel("Structure: —  •  Vocab: —")
         self.mini_struct_lbl.setTextFormat(Qt.PlainText)
         self.mini_struct_lbl.setStyleSheet("color: #D4D4D8; font-size: 11px; border: none;")
         mini_stats_col.addWidget(self.mini_struct_lbl)
 
-        self.mini_near_lbl = QLabel("✨ Near: —")
+        self.mini_near_lbl = QLabel("Near: —")
         self.mini_near_lbl.setTextFormat(Qt.PlainText)
         self.mini_near_lbl.setStyleSheet("color: #F9A8D4; font-size: 10px; font-weight: 600; border: none;")
         mini_stats_col.addWidget(self.mini_near_lbl)
@@ -6833,7 +7092,7 @@ class NocturneMainWindow(QMainWindow):
 
         rate_btn_row = QHBoxLayout()
         rate_btn_row.setSpacing(5)
-        self.btn_rate_now = QPushButton("⚡ Rate Lyrics")
+        self.btn_rate_now = QPushButton("Rate Lyrics")
         self.btn_rate_now.setObjectName("PrimaryBtn")
         self.btn_rate_now.setMinimumWidth(0)
         t_init = get_theme_palette(getattr(self, "studio_settings", {}).get("theme", "purple"))
@@ -6854,7 +7113,7 @@ class NocturneMainWindow(QMainWindow):
         self.btn_rate_now.clicked.connect(self.trigger_rate_my_lyrics)
         rate_btn_row.addWidget(self.btn_rate_now, 1)
 
-        self.btn_rate_details = QPushButton("📊 Details")
+        self.btn_rate_details = QPushButton("Details")
         self.btn_rate_details.setMinimumWidth(0)
         self.btn_rate_details.setStyleSheet("padding: 5px 6px; font-size: 11px;")
         self.btn_rate_details.setToolTip("Open Full Interactive Lyric Scorecard, Near-Rhyme Radar & Line Highlights")
@@ -6862,21 +7121,80 @@ class NocturneMainWindow(QMainWindow):
         rate_btn_row.addWidget(self.btn_rate_details, 1)
 
         rate_layout.addLayout(rate_btn_row)
-        left_layout.addWidget(self.rate_box)
-        left_layout.addStretch()
-
-        left_scroll.setWidget(left_scroll_body)
-        left_outer_layout.addWidget(left_scroll)
+        pen_layout.addWidget(self.rate_box)
 
         # ==========================================
         # CENTER PANE
         # ==========================================
         self.center_panel = QFrame()
-        self.center_panel.setObjectName("PanelCard")
-        self.center_panel.setMinimumWidth(420)
-        center_layout = QVBoxLayout(self.center_panel)
-        center_layout.setContentsMargins(6, 8, 6, 6)
-        center_layout.setSpacing(6)
+        self.center_panel.setObjectName("CenterPanel")
+        self.center_panel.setMinimumWidth(480)
+        center_outer = QVBoxLayout(self.center_panel)
+        center_outer.setContentsMargins(0, 0, 0, 0)
+        center_outer.setSpacing(0)
+
+        # Two workspace pages stacked in the centre column: the Home dashboard
+        # and the lyric workspace. The transport bar sits below both.
+        self.center_stack = QStackedWidget()
+        self.lyric_page = QWidget()
+        self.lyric_page.setObjectName("LyricPage")
+        center_layout = QVBoxLayout(self.lyric_page)
+        center_layout.setContentsMargins(18, 12, 18, 12)
+        center_layout.setSpacing(10)
+
+        # --- TRACK HEADER ---
+        track_header = QFrame()
+        track_header.setObjectName("TrackHeader")
+        hdr_lay = QVBoxLayout(track_header)
+        hdr_lay.setContentsMargins(2, 0, 2, 6)
+        hdr_lay.setSpacing(4)
+
+        eyebrow = QHBoxLayout()
+        eyebrow.setSpacing(6)
+        self.eyebrow_lbl = ElidedLabel(f"LYRIC WORKSPACE  •  v{APP_VERSION}")
+        self.eyebrow_lbl.setObjectName("Eyebrow")
+        eyebrow.addWidget(self.eyebrow_lbl, 1)
+
+        self.stat_rhymes = QLabel("RHYMES: 0")
+        self.stat_rhymes.setObjectName("BadgeStat")
+        self.stat_rhymes.setFixedHeight(28)
+        eyebrow.addWidget(self.stat_rhymes)
+
+        btn_header_preview = QPushButton("⛶")
+        btn_header_preview.setObjectName("GearBtn")
+        btn_header_preview.setFixedSize(34, 28)
+        btn_header_preview.setToolTip("Full Screen Lyric Preview")
+        btn_header_preview.clicked.connect(self.open_fullscreen_lyric_preview)
+        eyebrow.addWidget(btn_header_preview)
+
+        btn_new = QPushButton("+ New")
+        btn_new.setFixedHeight(28)
+        btn_new.setToolTip("Create a new track and immediately add it to the Vault")
+        btn_new.clicked.connect(self.new_track)
+        eyebrow.addWidget(btn_new)
+
+        btn_save = QPushButton("Save Track")
+        btn_save.setObjectName("PrimaryBtn")
+        btn_save.setFixedHeight(28)
+        btn_save.clicked.connect(self.save_track)
+        eyebrow.addWidget(btn_save)
+        hdr_lay.addLayout(eyebrow)
+
+        self.lbl_section_marker = QLabel("NO SECTION", objectName="SectionMarker")
+        self.lbl_section_marker.setAlignment(Qt.AlignLeft)
+        hdr_lay.addWidget(self.lbl_section_marker)
+
+        self.track_title_input = QLineEdit("Untitled_Track_01")
+        self.track_title_input.setObjectName("TrackTitleInput")
+        self.track_title_input.setPlaceholderText("Track Title...")
+        self.track_title_input.setMinimumWidth(0)
+        self.track_title_input.setFixedHeight(44)
+        self.track_title_input.textChanged.connect(self.schedule_realtime_vault_update)
+        self.track_title_input.textChanged.connect(
+            lambda txt: self.setWindowTitle(f"nocturne | {self.profile_name} — {txt.strip() or 'Untitled_Track_01'}")
+        )
+        hdr_lay.addWidget(self.track_title_input)
+        center_layout.addWidget(track_header)
 
         editor_toolbar = QHBoxLayout()
         editor_toolbar.setContentsMargins(10, 0, 10, 0)
@@ -6893,7 +7211,7 @@ class NocturneMainWindow(QMainWindow):
         self.solo_rhyme_group = None
         self.rhyme_dots = []
 
-        self.btn_clean_lyrics = QPushButton("🧹 Clean Up")
+        self.btn_clean_lyrics = QPushButton("Clean Up")
         self.btn_clean_lyrics.setObjectName("CleanLyricsBtn")
         self.btn_clean_lyrics.setFixedHeight(24)
         self.btn_clean_lyrics.setCursor(Qt.PointingHandCursor)
@@ -6947,7 +7265,7 @@ class NocturneMainWindow(QMainWindow):
         find_bar = QHBoxLayout(self.find_bar_widget)
         find_bar.setContentsMargins(10, 2, 10, 2)
         self.lyric_search_input = QLineEdit()
-        self.lyric_search_input.setPlaceholderText("🔍 Search in current lyrics (Ctrl+F)...")
+        self.lyric_search_input.setPlaceholderText("Search in current lyrics (Ctrl+F)...")
         self.lyric_search_input.setFixedHeight(30)
         self.lyric_search_input.textChanged.connect(self.perform_lyric_search)
         self.lyric_search_input.returnPressed.connect(self.next_search_match)
@@ -6991,17 +7309,117 @@ class NocturneMainWindow(QMainWindow):
         self.lyric_editor.cursorPositionChanged.connect(self._sync_live_rhyme_checker)
         self.lyric_editor.solo_changed.connect(self._on_editor_solo_changed)
         center_layout.addWidget(self.lyric_editor)
+        self.lyric_editor.cursorPositionChanged.connect(self._update_section_marker)
+        self.lyric_editor.textChanged.connect(self._update_section_marker)
+        self._update_section_marker()
+
+        # ==========================================
+        # WORKSPACE STACK: Home / project list / editor
+        # ==========================================
+        self._build_lyrics_list_page()
+        self._build_home_page()
+        self.center_stack.addWidget(self.home_page)
+        self.center_stack.addWidget(self.lyric_list_page)
+        self.center_stack.addWidget(self.lyric_page)
+        center_outer.addWidget(self.center_stack, 1)
+        self.center_stack.setCurrentWidget(self.home_page)
+        self.refresh_home_recent()
+        self.refresh_lyric_list()
+
+        # ==========================================
+        # BOTTOM AUDIO PLAYER (spans centre + right panes)
+        # ==========================================
+        transport_bar = QFrame()
+        transport_bar.setObjectName("TransportBar")
+        transport_layout = QHBoxLayout(transport_bar)
+        transport_layout.setContentsMargins(14, 8, 14, 8)
+        transport_layout.setSpacing(9)
+
+        def _player_ctrl(text, tooltip, slot):
+            b = QPushButton(text)
+            b.setObjectName("PlayerCtrl")
+            b.setFixedSize(34, 34)
+            b.setToolTip(tooltip)
+            b.setCursor(Qt.PointingHandCursor)
+            b.clicked.connect(slot)
+            return b
+
+        self.btn_player_prev = _player_ctrl(
+            "⏮", "Restart beat (jump to 00:00)", self.player_seek_prev
+        )
+        self.btn_player_next = _player_ctrl(
+            "⏭", "Jump to the next timestamp marker (or the end of the beat)", self.player_seek_next
+        )
+        transport_layout.addWidget(self.btn_player_prev)
+        transport_layout.addWidget(self.btn_play_beat)
+        transport_layout.addWidget(self.btn_player_next)
+
+        self.btn_load_beat.setFixedHeight(34)
+        transport_layout.addWidget(self.btn_load_beat)
+
+        transport_info = QVBoxLayout()
+        transport_info.setSpacing(4)
+        info_row = QHBoxLayout()
+        info_row.setSpacing(8)
+        self.player_track_lbl = ElidedLabel(self.track_title_input.text().strip() or "Untitled_Track_01")
+        self.player_track_lbl.setObjectName("PlayerTitle")
+        self.player_track_lbl.setToolTip("Current project in the player")
+        info_row.addWidget(self.player_track_lbl, 1)
+        self.beat_label.setStyleSheet("color: #8A8A9A; font-size: 10px; font-weight: 600; border: none;")
+        info_row.addWidget(self.beat_label)
+        transport_info.addLayout(info_row)
+
+        transport_seek = QHBoxLayout()
+        transport_seek.setSpacing(6)
+        transport_seek.addWidget(self.beat_seekbar, 1)
+        transport_seek.addWidget(self.lbl_beat_time)
+        transport_info.addLayout(transport_seek)
+        transport_layout.addLayout(transport_info, 2)
+
+        self.vol_lbl = QLabel("VOL")
+        self.vol_lbl.setStyleSheet(
+            "background: transparent; border: none; color: #8A8A9A; font-size: 10px; font-weight: 700;"
+        )
+        transport_layout.addWidget(self.vol_lbl)
+        self.vol_slider = QSlider(Qt.Horizontal)
+        self.vol_slider.setRange(0, 100)
+        self.vol_slider.setValue(80)
+        self.vol_slider.setFixedWidth(86)
+        self.vol_slider.setToolTip("Output volume")
+        self.vol_slider.valueChanged.connect(lambda v: self.audio_output.setVolume(v / 100.0))
+        transport_layout.addWidget(self.vol_slider)
+
+        transport_layout.addWidget(self.btn_loop)
+
+        btn_player_settings = QPushButton("⚙")
+        btn_player_settings.setObjectName("GearBtn")
+        btn_player_settings.setFixedSize(34, 34)
+        btn_player_settings.setToolTip("Nocturne Studio Settings")
+        btn_player_settings.clicked.connect(self.open_studio_settings)
+        transport_layout.addWidget(btn_player_settings)
 
         # ==========================================
         # RIGHT PANE
         # ==========================================
         self.right_panel = QFrame()
-        self.right_panel.setObjectName("PanelCard")
-        self.right_panel.setMinimumWidth(315)
-        self.right_panel.setMaximumWidth(460)
-        right_layout = QVBoxLayout(self.right_panel)
-        right_layout.setContentsMargins(10, 12, 10, 12)
+        self.right_panel.setObjectName("SidePanel")
+        self.right_panel.setMinimumWidth(320)
+        self.right_panel.setMaximumWidth(430)
+        right_outer = QVBoxLayout(self.right_panel)
+        right_outer.setContentsMargins(0, 0, 0, 0)
+        right_outer.setSpacing(0)
+        right_scroll = QScrollArea()
+        right_scroll.setObjectName("SideScroll")
+        right_scroll.setWidgetResizable(True)
+        right_scroll.setFrameShape(QFrame.NoFrame)
+        right_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        right_body = QWidget()
+        right_body.setObjectName("RightScrollBody")
+        right_layout = QVBoxLayout(right_body)
+        right_layout.setContentsMargins(14, 14, 14, 14)
         right_layout.setSpacing(10)
+        right_scroll.setWidget(right_body)
+        right_outer.addWidget(right_scroll, 1)
 
         r_hdr_row = QHBoxLayout()
         r_hdr_row.setSpacing(4)
@@ -7010,7 +7428,7 @@ class NocturneMainWindow(QMainWindow):
         r_hdr_row.addWidget(r_hdr_lbl)
         r_hdr_row.addStretch()
 
-        self.btn_live_rhyme = QPushButton("⚡ Live Mode")
+        self.btn_live_rhyme = QPushButton("Live Mode")
         self.btn_live_rhyme.setCheckable(True)
         self.btn_live_rhyme.setChecked(False)
         self.btn_live_rhyme.setMinimumWidth(0)
@@ -7301,7 +7719,6 @@ class NocturneMainWindow(QMainWindow):
         right_layout.addWidget(self.rc_card)
 
         # --- EDITOR QUICK TOOLS ---
-        right_layout.addWidget(QLabel("EDITOR TOOLS", objectName="SectionHeader"))
         t = get_theme_palette(getattr(self, "studio_settings", {}).get("theme", "purple"))
         self.tools_box = QFrame()
         self.tools_box.setStyleSheet(f"""
@@ -7337,7 +7754,7 @@ class NocturneMainWindow(QMainWindow):
             }}
         """
 
-        self.btn_toggle_bar_counts = QPushButton("🔢  Bar Syllable Counts: ON")
+        self.btn_toggle_bar_counts = QPushButton("Syllables: ON")
         self.btn_toggle_bar_counts.setCheckable(True)
         self.btn_toggle_bar_counts.setChecked(True)
         self.btn_toggle_bar_counts.setCursor(Qt.PointingHandCursor)
@@ -7345,7 +7762,7 @@ class NocturneMainWindow(QMainWindow):
         self.btn_toggle_bar_counts.toggled.connect(self._on_toggle_bar_counts)
         tools_layout.addWidget(self.btn_toggle_bar_counts)
 
-        self.btn_toggle_rhyme_hl = QPushButton("🎨  Rhyme Highlighting: ON")
+        self.btn_toggle_rhyme_hl = QPushButton("Rhyme Highlight: ON")
         self.btn_toggle_rhyme_hl.setCheckable(True)
         self.btn_toggle_rhyme_hl.setChecked(True)
         self.btn_toggle_rhyme_hl.setCursor(Qt.PointingHandCursor)
@@ -7353,7 +7770,7 @@ class NocturneMainWindow(QMainWindow):
         self.btn_toggle_rhyme_hl.toggled.connect(self._on_toggle_rhyme_highlighting)
         tools_layout.addWidget(self.btn_toggle_rhyme_hl)
 
-        self.btn_fullscreen_preview = QPushButton("⛶  Full Screen Lyric Preview")
+        self.btn_fullscreen_preview = QPushButton("Full Screen Lyric Preview")
         self.btn_fullscreen_preview.setCursor(Qt.PointingHandCursor)
         self.btn_fullscreen_preview.setStyleSheet(f"""
             QPushButton {{
@@ -7374,8 +7791,7 @@ class NocturneMainWindow(QMainWindow):
         self.btn_fullscreen_preview.clicked.connect(self.open_fullscreen_lyric_preview)
         tools_layout.addWidget(self.btn_fullscreen_preview)
 
-        right_layout.addWidget(self.tools_box)
-        right_layout.addStretch(1)
+        analysis_sec.addWidget(self.tools_box)
 
         # --- ABOUT CARD (BOTTOM RIGHT SIDEBAR) ---
         self.about_box = QFrame()
@@ -7418,7 +7834,14 @@ class NocturneMainWindow(QMainWindow):
         self._latest_release_info = None
         QTimer.singleShot(3000, lambda: self.check_github_updates(silent=True))
 
-        right_layout.addWidget(self.about_box)
+        meta_sec.addWidget(self.about_box)
+
+        right_layout.addWidget(analysis_sec)
+        right_layout.addWidget(beat_sec)
+        right_layout.addWidget(meta_sec)
+        right_layout.addStretch(1)
+
+        right_outer.addWidget(pen_dock)
 
         
 
@@ -7432,7 +7855,7 @@ class NocturneMainWindow(QMainWindow):
         btn_expand_left = QPushButton("▶")
         btn_expand_left.setObjectName("EdgeArrowBtn")
         btn_expand_left.setFixedSize(22, 34)
-        btn_expand_left.setToolTip("Open Left Sidebar (Vault, Beat Deck & Pen Meter)")
+        btn_expand_left.setToolTip("Open Left Sidebar (Navigation & Tracks)")
         btn_expand_left.clicked.connect(lambda: self.set_left_sidebar_visible(True))
         l_strip_lay.addWidget(btn_expand_left, alignment=Qt.AlignHCenter)
         l_strip_lay.addStretch()
@@ -7447,28 +7870,66 @@ class NocturneMainWindow(QMainWindow):
         btn_expand_right = QPushButton("◀")
         btn_expand_right.setObjectName("EdgeArrowBtn")
         btn_expand_right.setFixedSize(22, 34)
-        btn_expand_right.setToolTip("Open Right Sidebar (Rhyme Engine)")
+        btn_expand_right.setToolTip("Open Right Sidebar (Rhyme Engine & Tools)")
         btn_expand_right.clicked.connect(lambda: self.set_right_sidebar_visible(True))
         r_strip_lay.addWidget(btn_expand_right, alignment=Qt.AlignHCenter)
         r_strip_lay.addStretch()
 
+        # Centre + right panes share a column that also hosts the bottom player
+        # (the player spans both columns, like the reference transport bar).
+        self.inner_splitter = QSplitter(Qt.Horizontal)
+        self.inner_splitter.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        self.inner_splitter.setChildrenCollapsible(False)
+        self.inner_splitter.setHandleWidth(5)
+        self.inner_splitter.addWidget(self.center_panel)
+        self.inner_splitter.addWidget(self.right_panel)
+        self.inner_splitter.setStretchFactor(0, 1)
+        self.inner_splitter.setStretchFactor(1, 0)
+        self.inner_splitter.setSizes([890, 330])
+        self.inner_splitter.splitterMoved.connect(self._on_splitter_dragged)
+
+        content_col = QFrame()
+        content_col.setObjectName("ContentCol")
+        content_lay = QVBoxLayout(content_col)
+        content_lay.setContentsMargins(0, 0, 0, 10)
+        content_lay.setSpacing(8)
+        content_lay.addWidget(self.inner_splitter, 1)
+        content_lay.addWidget(transport_bar)
+
         self.main_splitter.addWidget(self.left_panel)
-        self.main_splitter.addWidget(self.center_panel)
-        self.main_splitter.addWidget(self.right_panel)
+        self.main_splitter.addWidget(content_col)
         self.main_splitter.setStretchFactor(0, 0)
         self.main_splitter.setStretchFactor(1, 1)
-        self.main_splitter.setStretchFactor(2, 0)
-        self.main_splitter.setSizes([315, 785, 360])
+        self.main_splitter.setSizes([260, 1180])
         self.main_splitter.splitterMoved.connect(self._on_splitter_dragged)
 
         workspace_row = QHBoxLayout()
         workspace_row.setContentsMargins(0, 0, 0, 0)
-        workspace_row.setSpacing(6)
+        workspace_row.setSpacing(0)
         workspace_row.addWidget(self.left_collapsed_strip)
         workspace_row.addWidget(self.main_splitter, 1)
         workspace_row.addWidget(self.right_collapsed_strip)
 
         root_layout.addLayout(workspace_row, 1)
+
+    def _update_section_marker(self):
+        """Show the nearest [SECTION] tag above the cursor in the track header."""
+        if not hasattr(self, "lbl_section_marker"):
+            return
+        marker = ""
+        block = self.lyric_editor.textCursor().block()
+        while block.isValid():
+            text = block.text().strip()
+            if (
+                text.startswith("[")
+                and text.endswith("]")
+                and len(text) > 2
+                and not re.fullmatch(r"\[[\d:.]+\]", text)
+            ):
+                marker = text
+                break
+            block = block.previous()
+        self.lbl_section_marker.setText(marker.upper() if marker else "NO SECTION")
 
     # --- SIDEBAR HIDE / OPEN CONTROLS ---
     def _save_workspace_ui_state(self):
@@ -7476,25 +7937,28 @@ class NocturneMainWindow(QMainWindow):
             return
         self.studio_settings["left_sidebar_visible"] = bool(self.left_panel.isVisible())
         self.studio_settings["right_sidebar_visible"] = bool(self.right_panel.isVisible())
-        self.studio_settings["left_sidebar_width"] = int(getattr(self, "_last_left_width", 315))
-        self.studio_settings["right_sidebar_width"] = int(getattr(self, "_last_right_width", 360))
+        self.studio_settings["left_sidebar_width"] = int(getattr(self, "_last_left_width", 260))
+        self.studio_settings["right_sidebar_width"] = int(getattr(self, "_last_right_width", 330))
         self.save_profile_settings()
 
     def _on_splitter_dragged(self, _pos: int, _index: int):
-        sizes = self.main_splitter.sizes()
         changed = False
-        if self.left_panel.isVisible() and sizes[0] >= 315:
+        sizes = self.main_splitter.sizes()
+        if self.left_panel.isVisible() and sizes and sizes[0] >= 260:
             self._last_left_width = sizes[0]
             changed = True
-        if self.right_panel.isVisible() and sizes[2] >= 315:
-            self._last_right_width = sizes[2]
-            changed = True
+        inner = getattr(self, "inner_splitter", None)
+        if inner is not None and self.right_panel.isVisible():
+            isz = inner.sizes()
+            if len(isz) > 1 and isz[1] >= 320:
+                self._last_right_width = isz[1]
+                changed = True
         if changed:
             self._save_workspace_ui_state()
 
     def set_left_sidebar_visible(self, visible: bool, persist: bool = True):
         sizes = self.main_splitter.sizes()
-        if not visible and self.left_panel.isVisible() and sizes[0] >= 315:
+        if not visible and self.left_panel.isVisible() and sizes and sizes[0] >= 260:
             self._last_left_width = sizes[0]
 
         self.left_panel.setVisible(visible)
@@ -7502,28 +7966,33 @@ class NocturneMainWindow(QMainWindow):
 
         if visible:
             total = max(960, self.main_splitter.width())
-            r_w = sizes[2] if self.right_panel.isVisible() else 0
-            l_w = max(315, min(440, getattr(self, "_last_left_width", 315)))
-            c_w = max(420, total - l_w - r_w)
-            self.main_splitter.setSizes([l_w, c_w, r_w])
+            l_w = max(260, min(340, getattr(self, "_last_left_width", 260)))
+            rest = max(560, total - l_w)
+            self.main_splitter.setSizes([l_w, rest])
 
         if persist:
             self._save_workspace_ui_state()
 
     def set_right_sidebar_visible(self, visible: bool, persist: bool = True):
-        sizes = self.main_splitter.sizes()
-        if not visible and self.right_panel.isVisible() and sizes[2] >= 315:
-            self._last_right_width = sizes[2]
+        inner = getattr(self, "inner_splitter", None)
+        if inner is None:
+            self.right_panel.setVisible(visible)
+            self.right_collapsed_strip.setVisible(not visible)
+            if persist:
+                self._save_workspace_ui_state()
+            return
+        sizes = inner.sizes()
+        if not visible and self.right_panel.isVisible() and len(sizes) > 1 and sizes[1] >= 320:
+            self._last_right_width = sizes[1]
 
         self.right_panel.setVisible(visible)
         self.right_collapsed_strip.setVisible(not visible)
 
         if visible:
-            total = max(960, self.main_splitter.width())
-            l_w = sizes[0] if self.left_panel.isVisible() else 0
-            r_w = max(315, min(460, getattr(self, "_last_right_width", 360)))
-            c_w = max(420, total - l_w - r_w)
-            self.main_splitter.setSizes([l_w, c_w, r_w])
+            total = max(960, inner.width())
+            r_w = max(320, min(430, getattr(self, "_last_right_width", 330)))
+            c_w = max(480, total - r_w)
+            inner.setSizes([c_w, r_w])
 
         if persist:
             self._save_workspace_ui_state()
@@ -7563,16 +8032,16 @@ class NocturneMainWindow(QMainWindow):
         self.rate_tier_lbl.setStyleSheet(f"color: {res['color']}; font-size: 11px; font-weight: 800; border: none;")
 
         bd = res["breakdown"]
-        self.mini_multie_lbl.setText(f"🔥 Rhyme: {bd['multies']}%  •  🌊 Flow: {bd['flow']}%")
-        self.mini_struct_lbl.setText(f"🏗 Structure: {bd['structure']}%  •  🧠 Vocab: {bd['vocab']}%")
+        self.mini_multie_lbl.setText(f"Rhyme: {bd['multies']}%  •  Flow: {bd['flow']}%")
+        self.mini_struct_lbl.setText(f"Structure: {bd['structure']}%  •  Vocab: {bd['vocab']}%")
 
         near = res.get("near") or {}
         near_count = near.get("count", 0)
         near_avg = near.get("avg_confidence", 0)
         if near_count:
-            self.mini_near_lbl.setText(f"✨ Near: {near_count}  •  {near_avg}% avg")
+            self.mini_near_lbl.setText(f"Near: {near_count}  •  {near_avg}% avg")
         else:
-            self.mini_near_lbl.setText("✨ Near: none yet — try a slant")
+            self.mini_near_lbl.setText("Near: none yet — try a slant")
 
     def open_rating_breakdown_dialog(self):
         self._finalize_lyric_rating(animate=False)
@@ -7834,7 +8303,7 @@ class NocturneMainWindow(QMainWindow):
                 pass
             self._beat_analyzer_worker = None
 
-        self.beat_label.setText(f"🎵 {os.path.basename(path)}  (Analyzing waveform...)")
+        self.beat_label.setText(f"{os.path.basename(path)}  (Analyzing waveform...)")
         worker = BeatWaveformAnalyzerWorker(path)
         worker.analysis_ready.connect(self._on_waveform_analysis_ready)
         worker.analysis_failed.connect(self._on_waveform_analysis_failed)
@@ -7865,7 +8334,7 @@ class NocturneMainWindow(QMainWindow):
             self.beat_sync_offset_ms = float(self.detected_beat_times_ms[0])
 
         rounded_bpm = max(40, min(260, round(self.detected_bpm)))
-        self.beat_label.setText(f"🎵 {os.path.basename(path)}  [{rounded_bpm} BPM]")
+        self.beat_label.setText(f"{os.path.basename(path)}  [{rounded_bpm} BPM]")
 
         if getattr(self, "metro_mode", "OFF") == "AUTO":
             self._apply_detected_waveform_tempo(rounded_bpm)
@@ -7878,7 +8347,7 @@ class NocturneMainWindow(QMainWindow):
         self.detected_bpm = None
         self.detected_beat_times_ms = []
         self.auto_beat_grid_active = False
-        self.beat_label.setText(f"🎵 {os.path.basename(path)}")
+        self.beat_label.setText(f"{os.path.basename(path)}")
 
     def _apply_detected_waveform_tempo(self, bpm_int: int):
         self._updating_bpm_from_auto = True
@@ -8044,7 +8513,7 @@ class NocturneMainWindow(QMainWindow):
         self.metro_mode = mode
         if mode == "OFF":
             self.btn_metro.setChecked(False)
-            self.btn_metro.setText("⏱ Metro: OFF")
+            self.btn_metro.setText("Metro: OFF")
             self.btn_metro.setStyleSheet("""
                 QPushButton {
                     background-color: #191922;
@@ -8063,7 +8532,7 @@ class NocturneMainWindow(QMainWindow):
             self._stop_precision_metro_clock()
         elif mode == "ON":
             self.btn_metro.setChecked(True)
-            self.btn_metro.setText("🟠 Metro: ON")
+            self.btn_metro.setText("Metro: ON")
             self.btn_metro.setStyleSheet("""
                 QPushButton {
                     background-color: #2A1F0D;
@@ -8082,7 +8551,7 @@ class NocturneMainWindow(QMainWindow):
             self._start_precision_metro_clock(lock_from_zero=True)
         elif mode == "AUTO":
             self.btn_metro.setChecked(True)
-            self.btn_metro.setText("🔵 Metro: AUTO")
+            self.btn_metro.setText("Metro: AUTO")
             self.btn_metro.setStyleSheet("""
                 QPushButton {
                     background-color: #0E2433;
@@ -8110,15 +8579,26 @@ class NocturneMainWindow(QMainWindow):
     def _update_beat_button_state(self):
         if not hasattr(self, "btn_load_beat"):
             return
+        has_beat = bool(self.beat_path)
+        for name in ("btn_player_prev", "btn_player_next"):
+            btn = getattr(self, name, None)
+            if btn is not None:
+                btn.setEnabled(has_beat)
+                btn.setToolTip(
+                    "Restart beat (jump to 00:00)" if name == "btn_player_prev"
+                    else "Jump to the next timestamp marker (or the end of the beat)"
+                    if has_beat else "Load a beat to use player navigation"
+                )
         if self.beat_path:
-            self.btn_load_beat.setText("Unload Beat")
+            self.btn_load_beat.setText("Unload")
             self.btn_load_beat.setStyleSheet("""
                 QPushButton {
                     background-color: #24131B;
                     border: 1px solid #7F1D1D;
                     color: #FCA5A5;
-                    padding: 4px 6px;
+                    padding: 4px 9px;
                     font-size: 11px;
+                    border-radius: 8px;
                 }
                 QPushButton:hover {
                     background-color: #450A0A;
@@ -8128,53 +8608,49 @@ class NocturneMainWindow(QMainWindow):
             """)
         else:
             self.btn_load_beat.setText("Load Beat")
-            self.btn_load_beat.setStyleSheet("padding: 4px 6px; font-size: 11px;")
+            self.btn_load_beat.setStyleSheet(
+                "padding: 4px 10px; font-size: 11px; border-radius: 8px;"
+            )
 
     def _update_play_button_state(self):
         if not hasattr(self, "btn_play_beat"):
             return
-        t = get_theme_palette(getattr(self, "studio_settings", {}).get("theme", "purple"))
+        # Monochrome transport button (matches the reference player's light circle)
         if self.is_playing:
-            self.btn_play_beat.setText("⏹ Stop")
-            self.btn_play_beat.setStyleSheet("""
-                QPushButton {
-                    background-color: #7F1D1D;
-                    border: 1px solid #EF4444;
-                    color: #FFFFFF;
-                    padding: 4px 6px;
-                    font-size: 11px;
-                    font-weight: 700;
-                }
-                QPushButton:hover {
-                    background-color: #991B1B;
-                    border-color: #FCA5A5;
-                    color: #FFFFFF;
-                }
-            """)
+            self.btn_play_beat.setText("⏸")
+            tip = "Pause the beat"
         else:
-            self.btn_play_beat.setText("▶ Play")
-            self.btn_play_beat.setStyleSheet(f"""
-                QPushButton {{
-                    background-color: {t["accent"]};
-                    border: 1px solid {t["accent_hover"]};
-                    color: {t["accent_fg"]};
-                    padding: 4px 6px;
-                    font-size: 11px;
-                    font-weight: 700;
-                }}
-                QPushButton:hover {{
-                    background-color: {t["accent_hover"]};
-                    border-color: {t["accent_fg"]};
-                    color: {t["accent_fg"]};
-                }}
-            """)
+            self.btn_play_beat.setText("▶")
+            tip = "Play the beat"
+        self.btn_play_beat.setToolTip(tip)
+        self.btn_play_beat.setStyleSheet("""
+            QPushButton {
+                background-color: #E8E8EE;
+                border: 1px solid #FFFFFF;
+                color: #101014;
+                border-radius: 20px;
+                font-size: 15px;
+                font-weight: 800;
+            }
+            QPushButton:hover {
+                background-color: #FFFFFF;
+            }
+            QPushButton:pressed {
+                background-color: #CFCFD8;
+            }
+            QPushButton:disabled {
+                background-color: #2A2A36;
+                border: 1px solid #363645;
+                color: #6B6B7A;
+            }
+        """)
 
     def _update_loop_button_state(self):
         if not hasattr(self, "btn_loop"):
             return
         t = get_theme_palette(getattr(self, "studio_settings", {}).get("theme", "purple"))
         if self.is_looping:
-            self.btn_loop.setText("🔁 Loop: ON")
+            self.btn_loop.setText("Loop: ON")
             self.btn_loop.setStyleSheet(f"""
                 QPushButton {{
                     background-color: {t["accent_soft"]};
@@ -8191,7 +8667,7 @@ class NocturneMainWindow(QMainWindow):
                 }}
             """)
         else:
-            self.btn_loop.setText("🔁 Loop: OFF")
+            self.btn_loop.setText("Loop: OFF")
             self.btn_loop.setStyleSheet(f"""
                 QPushButton {{
                     background-color: {t["bg_surface"]};
@@ -8354,7 +8830,7 @@ class NocturneMainWindow(QMainWindow):
         else:
             for idx, m in enumerate(self.beat_markers):
                 self.marker_combo.addItem(
-                    f"📍 {self._format_time_ms(m['time_ms'])} • {m['label']}",
+                    f"{self._format_time_ms(m['time_ms'])} • {m['label']}",
                     idx,
                 )
         self.marker_combo.blockSignals(False)
@@ -8378,11 +8854,11 @@ class NocturneMainWindow(QMainWindow):
         act_jump.triggered.connect(lambda: self.jump_to_beat_timestamp_ms(m["time_ms"], auto_play=True))
         menu.addAction(act_jump)
 
-        act_rename = QAction("✏ Rename Marker...", self)
+        act_rename = QAction("Rename Marker...", self)
         act_rename.triggered.connect(lambda: self._rename_marker(marker_idx))
         menu.addAction(act_rename)
 
-        act_del = QAction("🗑 Delete Marker", self)
+        act_del = QAction("Delete Marker", self)
         act_del.triggered.connect(lambda: self._delete_marker(marker_idx))
         menu.addAction(act_del)
 
@@ -8465,6 +8941,29 @@ class NocturneMainWindow(QMainWindow):
             self._last_synced_beat_idx = -1
         self.save_track()
 
+    def player_seek_prev(self):
+        """Transport previous — restart the beat from 00:00."""
+        if not self.beat_path:
+            return
+        self.jump_to_beat_timestamp_ms(0, auto_play=False)
+
+    def player_seek_next(self):
+        """Transport next — jump to the next pinned timestamp marker, else the end."""
+        if not self.beat_path:
+            return
+        try:
+            pos_ms = int(self._get_live_playback_ms())
+        except Exception:
+            pos_ms = 0
+        target = None
+        for marker in sorted(self.beat_markers or [], key=lambda m: m.get("time_ms", 0)):
+            if marker.get("time_ms", 0) > pos_ms + 400:
+                target = int(marker["time_ms"])
+                break
+        if target is None:
+            target = int(self.beat_duration_ms or 0)
+        self.jump_to_beat_timestamp_ms(target, auto_play=False)
+
     def toggle_beat_playback(self):
         if not self.beat_path:
             QMessageBox.information(self, "No Beat", "Load an .mp3 or .wav beat first.")
@@ -8536,8 +9035,8 @@ class NocturneMainWindow(QMainWindow):
         if is_initial_load and hasattr(self, "left_panel") and hasattr(self, "right_panel"):
             self._is_restoring_ui_state = True
             try:
-                self._last_left_width = max(315, min(440, int(self.studio_settings.get("left_sidebar_width", 315))))
-                self._last_right_width = max(315, min(460, int(self.studio_settings.get("right_sidebar_width", 360))))
+                self._last_left_width = max(260, min(340, int(self.studio_settings.get("left_sidebar_width", 260))))
+                self._last_right_width = max(320, min(430, int(self.studio_settings.get("right_sidebar_width", 330))))
                 left_vis = bool(self.studio_settings.get("left_sidebar_visible", True))
                 right_vis = bool(self.studio_settings.get("right_sidebar_visible", True))
                 self.set_left_sidebar_visible(left_vis, persist=False)
@@ -8592,13 +9091,7 @@ class NocturneMainWindow(QMainWindow):
 
         # Center Pane & Lyric Editor Background
         if hasattr(self, "center_panel"):
-            self.center_panel.setStyleSheet(f"""
-                QFrame#PanelCard {{
-                    background-color: {bg_surface};
-                    border: 1px solid {border};
-                    border-radius: 12px;
-                }}
-            """)
+            self.center_panel.setStyleSheet("")
 
         if hasattr(self, "lyric_editor"):
             self.lyric_editor.setStyleSheet(f"""
@@ -8620,7 +9113,7 @@ class NocturneMainWindow(QMainWindow):
                 f"QFrame {{ background-color: {bg_surface}; border: 1px solid {border}; border-radius: 6px; padding: 6px; }}"
             )
 
-        for btn_name in ("btn_stamp_line", "btn_tap_bpm", "btn_anchor_beat1"):
+        for btn_name in ("btn_stamp_line", "btn_tap_bpm", "btn_anchor_beat1", "btn_pin_marker"):
             btn = getattr(self, btn_name, None)
             if btn:
                 btn.setStyleSheet(f"""
@@ -8832,6 +9325,18 @@ class NocturneMainWindow(QMainWindow):
             """)
 
         # About Card
+        if hasattr(self, "stash_editor"):
+            self.stash_editor.setStyleSheet(f"""
+                QPlainTextEdit {{
+                    background-color: transparent;
+                    border: 1px solid {border};
+                    border-radius: 6px;
+                    color: #D9D5EE;
+                    font-size: 12px;
+                    padding: 6px;
+                }}
+            """)
+
         if hasattr(self, "about_box"):
             self.about_box.setStyleSheet(f"""
                 QFrame {{
@@ -8890,24 +9395,24 @@ class NocturneMainWindow(QMainWindow):
         if hasattr(self, "btn_toggle_bar_counts"):
             self.btn_toggle_bar_counts.blockSignals(True)
             self.btn_toggle_bar_counts.setChecked(show_counts)
-            self.btn_toggle_bar_counts.setText(f"🔢  Bar Syllable Counts: {'ON' if show_counts else 'OFF'}")
+            self.btn_toggle_bar_counts.setText(f"Syllables: {'ON' if show_counts else 'OFF'}")
             self.btn_toggle_bar_counts.blockSignals(False)
 
         if hasattr(self, "btn_toggle_rhyme_hl"):
             self.btn_toggle_rhyme_hl.blockSignals(True)
             self.btn_toggle_rhyme_hl.setChecked(hl_rhymes)
-            self.btn_toggle_rhyme_hl.setText(f"🎨  Rhyme Highlighting: {'ON' if hl_rhymes else 'OFF'}")
+            self.btn_toggle_rhyme_hl.setText(f"Rhyme Highlight: {'ON' if hl_rhymes else 'OFF'}")
             self.btn_toggle_rhyme_hl.blockSignals(False)
 
     def _on_toggle_bar_counts(self, checked: bool):
         self.studio_settings["show_gutter"] = bool(checked)
-        self.btn_toggle_bar_counts.setText(f"🔢  Bar Syllable Counts: {'ON' if checked else 'OFF'}")
+        self.btn_toggle_bar_counts.setText(f"Syllables: {'ON' if checked else 'OFF'}")
         self.lyric_editor.apply_settings(self.studio_settings)
         self.save_profile_settings()
 
     def _on_toggle_rhyme_highlighting(self, checked: bool):
         self.studio_settings["highlight_rhymes"] = bool(checked)
-        self.btn_toggle_rhyme_hl.setText(f"🎨  Rhyme Highlighting: {'ON' if checked else 'OFF'}")
+        self.btn_toggle_rhyme_hl.setText(f"Rhyme Highlight: {'ON' if checked else 'OFF'}")
         self.lyric_editor.apply_settings(self.studio_settings)
         self.save_profile_settings()
 
@@ -8970,10 +9475,10 @@ class NocturneMainWindow(QMainWindow):
 
             cur_title = self.track_title_input.text().strip() or "Untitled_Track_01"
             self.setWindowTitle(f"nocturne | {self.profile_name} — {cur_title}")
-            self.vault_header_lbl.setText(f"VAULT // {self.profile_name.upper()}")
+            self.vault_header_lbl.setText("TRACK EXPLORER")
             self.load_vault_list()
 
-        self.btn_profile_cfg.setText(f" {self.profile_name}")
+        self.btn_profile_cfg.setText(f"{self.profile_name}")
         self.btn_profile_cfg.setIcon(
             QIcon(build_circular_avatar_pixmap(self.profile_dir, self.profile_name, size=20, border_width=1))
         )
@@ -9451,11 +9956,6 @@ class NocturneMainWindow(QMainWindow):
             return
         self._apply_rhyme_lookup_result(word, from_live, data)
 
-    def _on_rhyme_worker_finished(self, worker, job_id: int):
-        self._cleanup_worker(worker)
-        if job_id == self._rhyme_lookup_job_id:
-            self.set_rhyme_loading(False)
-
     def _apply_rhyme_lookup_result(self, word: str, from_live: bool, data: dict):
         self._last_inspected_word = word.lower()
         prefix = "⚡ Live" if from_live else "Target"
@@ -9555,10 +10055,6 @@ class NocturneMainWindow(QMainWindow):
         self._update_loop_button_state()
 
     # --- VAULT STORAGE, TIMESTAMPS & VAULT SEARCH ---
-    def autosave_silent(self):
-        if self.lyric_editor.toPlainText().strip():
-            self.save_track()
-
     def _sanitize_track_filename(self, title: str) -> str:
         safe = "".join(c for c in title if c.isalnum() or c in (" ", "_", "-")).strip()
         return safe or "Untitled_Track"
@@ -9631,22 +10127,6 @@ class NocturneMainWindow(QMainWindow):
         title = self.track_title_input.text().strip() or "Untitled_Track"
         safe_name = self._sanitize_track_filename(title)
         filepath = os.path.join(self.vault_dir, f"{safe_name}.json")
-        has_active_file = bool(getattr(self, "current_track_safe_name", None)) or os.path.exists(filepath)
-        if has_active_file or self.lyric_editor.toPlainText().strip():
-            self.save_track()
-
-    def schedule_realtime_vault_update(self):
-        if getattr(self, "_is_loading_track", False):
-            return
-        if hasattr(self, "realtime_vault_timer"):
-            self.realtime_vault_timer.start()
-
-    def _on_realtime_track_modified(self):
-        if getattr(self, "_is_loading_track", False):
-            return
-        title = self.track_title_input.text().strip() or "Untitled_Track"
-        safe_name = self._sanitize_track_filename(title)
-        filepath = os.path.join(self.vault_dir, f"{safe_name}.json")
         if os.path.exists(filepath) or self.lyric_editor.toPlainText().strip():
             self.save_track()
 
@@ -9683,11 +10163,304 @@ class NocturneMainWindow(QMainWindow):
             return
         os.makedirs(self.trash_dir, exist_ok=True)
         trash_count = len([f for f in os.listdir(self.trash_dir) if f.endswith(".json")])
-        self.btn_recycle_bin.setText(f"🗑 Bin ({trash_count})")
+        self.btn_recycle_bin.setText(f"Bin ({trash_count})")
+
+    def _build_home_page(self):
+        """Home dashboard: greeting, search + New Track, recent tracks, scrapbook."""
+        self.home_page = QWidget()
+        self.home_page.setObjectName("HomePage")
+        home_outer = QVBoxLayout(self.home_page)
+        home_outer.setContentsMargins(0, 0, 0, 0)
+        home_outer.setSpacing(0)
+
+        home_scroll = QScrollArea()
+        home_scroll.setObjectName("HomeScroll")
+        home_scroll.setWidgetResizable(True)
+        home_scroll.setFrameShape(QFrame.NoFrame)
+        home_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        home_body = QWidget()
+        home_body.setObjectName("HomeScrollBody")
+        home_layout = QVBoxLayout(home_body)
+        home_layout.setContentsMargins(28, 18, 28, 24)
+        home_layout.setSpacing(10)
+
+        crumb = QLabel("[Home]  Dashboard", objectName="Eyebrow")
+        crumb.setAlignment(Qt.AlignHCenter)
+        home_layout.addWidget(crumb)
+
+        self.home_greeting_lbl = QLabel(self.profile_name)
+        self.home_greeting_lbl.setObjectName("HomeTitle")
+        home_layout.addWidget(self.home_greeting_lbl)
+
+        search_row = QHBoxLayout()
+        search_row.setSpacing(8)
+        self.home_search_input = QLineEdit()
+        self.home_search_input.setPlaceholderText("Search & filter tracks...")
+        self.home_search_input.setFixedHeight(36)
+        self.home_search_input.setClearButtonEnabled(True)
+        self.home_search_input.textChanged.connect(self._on_home_search_changed)
+        search_row.addWidget(self.home_search_input, 1)
+
+        btn_home_new = QPushButton("+ New Track")
+        btn_home_new.setFixedHeight(36)
+        btn_home_new.setToolTip("Create a new track and immediately add it to the Vault")
+        btn_home_new.clicked.connect(self.new_track)
+        search_row.addWidget(btn_home_new)
+        home_layout.addLayout(search_row)
+
+        home_layout.addSpacing(8)
+        home_layout.addWidget(QLabel("RECENT TRACKS", objectName="SectionHeader"))
+        self.home_recent_host = QWidget()
+        self.home_recent_grid = QGridLayout(self.home_recent_host)
+        self.home_recent_grid.setContentsMargins(0, 4, 0, 4)
+        self.home_recent_grid.setHorizontalSpacing(10)
+        self.home_recent_grid.setVerticalSpacing(10)
+        home_layout.addWidget(self.home_recent_host)
+
+        home_layout.addSpacing(10)
+        home_layout.addWidget(QLabel("QUICK SCRAPBOOK", objectName="SectionHeader"))
+        scrap_hint = QLabel("Loose bars, hooks and slang ideas — autosaved with the current track.")
+        scrap_hint.setObjectName("HomeHint")
+        home_layout.addWidget(scrap_hint)
+        home_layout.addWidget(self.stash_editor)
+
+        home_layout.addStretch(1)
+        home_scroll.setWidget(home_body)
+        home_outer.addWidget(home_scroll)
+
+    def show_workspace_page(self, page: str):
+        """Switch the centre column: Home dashboard, lyric project list or editor."""
+        if not hasattr(self, "center_stack"):
+            return
+        if page == "home":
+            self.refresh_home_recent()
+            self.center_stack.setCurrentWidget(self.home_page)
+        elif page == "editor":
+            self.center_stack.setCurrentWidget(self.lyric_page)
+            ed = getattr(self, "lyric_editor", None)
+            if ed is not None:
+                ed.update_gutter_width(0)
+                ed.viewport().update()
+                ed.setFocus()
+        else:  # "lyrics" — the project list
+            if hasattr(self, "lyric_list_page"):
+                self.refresh_lyric_list()
+                self.center_stack.setCurrentWidget(self.lyric_list_page)
+        if getattr(self, "nav_home", None) is not None and getattr(self, "nav_lyrics", None) is not None:
+            self._sync_nav_highlight()
+        self._update_lyrics_inspector_visibility()
+
+    def _update_lyrics_inspector_visibility(self, *_args):
+        """The lyrics overview/tools block only shows on Lyrics pages (list or editor)."""
+        blk = getattr(self, "lyrics_info_block", None)
+        if blk is None or not hasattr(self, "center_stack"):
+            return
+        cur = self.center_stack.currentWidget()
+        on_lyrics = cur is getattr(self, "lyric_list_page", None) or cur is getattr(self, "lyric_page", None)
+        blk.setVisible(on_lyrics)
+        if on_lyrics:
+            self._refresh_lyrics_overview()
+
+    def _sync_nav_highlight(self, *_args):
+        """Keep Home/Lyrics nav highlight in step with the visible workspace page."""
+        if (
+            getattr(self, "nav_home", None) is None
+            or getattr(self, "nav_lyrics", None) is None
+            or getattr(self, "center_stack", None) is None
+        ):
+            return
+        on_home = self.center_stack.currentWidget() is getattr(self, "home_page", None)
+        self.nav_home.setChecked(on_home)
+        self.nav_lyrics.setChecked(not on_home)
+
+    def _on_home_search_changed(self, text: str):
+        # The Home search and the track explorer filter are the same filter.
+        if hasattr(self, "vault_search_input") and self.vault_search_input.text() != text:
+            self.vault_search_input.setText(text)   # reloads the explorer, which refreshes Home too
+            return
+        self.refresh_home_recent(text)
+
+    def _home_recent_entries(self, query: str = ""):
+        entries = []
+        if not os.path.exists(self.vault_dir):
+            return entries
+        q = (query or "").strip().lower()
+        for fname in os.listdir(self.vault_dir):
+            if not fname.endswith(".json"):
+                continue
+            fpath = os.path.join(self.vault_dir, fname)
+            safe_name = fname[:-5]
+            try:
+                mtime = os.stat(fpath).st_mtime
+            except OSError:
+                mtime = 0.0
+
+            title = safe_name
+            when_str = ""
+            lyrics_txt = ""
+            stash_txt = ""
+            bpm_val = 0
+            status_key = ""
+            beat_dur_ms = 0
+            try:
+                data = read_encrypted_profile_json(fpath, self.profile_dir, default={}) or {}
+                title = data.get("title") or safe_name
+                if data.get("updated_iso"):
+                    try:
+                        when_str = datetime.fromisoformat(data["updated_iso"]).strftime("%d %b • %I:%M %p")
+                    except ValueError:
+                        when_str = ""
+                if not when_str:
+                    when_str = data.get("updated_at") or data.get("created_at") or ""
+                if not when_str and mtime:
+                    when_str = datetime.fromtimestamp(mtime).strftime("%d %b • %I:%M %p")
+                lyrics_txt = data.get("lyrics", "")
+                stash_txt = data.get("stash", "")
+                try:
+                    bpm_val = int(data.get("bpm") or 0)
+                except (TypeError, ValueError):
+                    bpm_val = 0
+                status_key = (data.get("status") or "").strip().lower()
+                try:
+                    beat_dur_ms = int(data.get("beat_dur_ms") or 0)
+                except (TypeError, ValueError):
+                    beat_dur_ms = 0
+            except Exception:
+                pass
+
+            if q and not any(
+                q in hay.lower()
+                for hay in (safe_name, title, when_str, lyrics_txt, stash_txt)
+            ):
+                continue
+
+            entries.append(
+                {
+                    "safe": safe_name,
+                    "title": title,
+                    "when": when_str,
+                    "lyrics": lyrics_txt,
+                    "mtime": mtime,
+                    "bpm": bpm_val,
+                    "status": status_key,
+                    "beat_dur_ms": beat_dur_ms,
+                }
+            )
+
+        entries.sort(key=lambda e: e["mtime"], reverse=True)
+        return entries
+
+    def _track_full_stats(self, entry: dict) -> dict:
+        """Real per-project stats (words/lines/bars/rhymes/syllables), cached per file revision."""
+        cache = getattr(self, "_home_stats_cache", None)
+        if cache is None:
+            cache = {}
+            self._home_stats_cache = cache
+        key = (entry["safe"], entry.get("mtime", 0))
+        hit = cache.get(key)
+        if hit is not None:
+            return hit
+        lyrics = entry.get("lyrics") or ""
+        non_empty = [ln for ln in lyrics.splitlines() if ln.strip()]
+        bars = sum(1 for ln in non_empty if not ln.strip().startswith("["))
+        words = 0
+        for ln in non_empty:
+            if not ln.strip().startswith("["):
+                words += len(ln.split())
+        stats = {"words": words, "lines": len(non_empty), "bars": bars, "rhymes": 0, "syllables": 0}
+        if lyrics.strip() and len(lyrics) < 20000:
+            try:
+                res = analyze_lyrics(lyrics)
+                stats["rhymes"] = int(res.get("total_rhymes", 0))
+                stats["syllables"] = sum(
+                    int(ln.get("syllables") or 0) for ln in (res.get("lines") or [])
+                )
+            except Exception:
+                pass
+        cache[key] = stats
+        return stats
+
+    def _home_track_stats(self, entry: dict):
+        """Backwards-compatible (bars, rhymes) tuple for the Home cards."""
+        s = self._track_full_stats(entry)
+        return s["bars"], s["rhymes"]
+
+    def _build_home_track_card(self, entry: dict) -> QFrame:
+        bars, rhymes = self._home_track_stats(entry)
+        card = QFrame()
+        card.setObjectName("TrackCard")
+        card.setCursor(Qt.PointingHandCursor)
+        card.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        lay = QVBoxLayout(card)
+        lay.setContentsMargins(14, 12, 14, 12)
+        lay.setSpacing(8)
+
+        head = QHBoxLayout()
+        head.setSpacing(10)
+        wave = MiniWaveform(
+            entry["title"],
+            accent_provider=lambda: get_theme_palette(
+                getattr(self, "studio_settings", {}).get("theme", "purple")
+            ).get("accent", "#8B5CF6"),
+        )
+        head.addWidget(wave)
+        head.addSpacing(4)
+        title_col = QVBoxLayout()
+        title_col.setSpacing(2)
+        title_lbl = ElidedLabel(entry["title"])
+        title_lbl.setObjectName("TrackCardTitle")
+        title_col.addWidget(title_lbl)
+        when_lbl = QLabel(entry.get("when") or "—")
+        when_lbl.setObjectName("TrackCardMeta")
+        title_col.addWidget(when_lbl)
+        head.addLayout(title_col, 1)
+        lay.addLayout(head)
+
+        foot = QHBoxLayout()
+        foot.setSpacing(8)
+        pill = QLabel(f"{rhymes} RHYMES")
+        pill.setObjectName("StatPill")
+        foot.addWidget(pill)
+        bars_lbl = QLabel(f"{bars} BARS")
+        bars_lbl.setObjectName("TrackCardMeta")
+        foot.addWidget(bars_lbl)
+        foot.addStretch(1)
+        lay.addLayout(foot)
+
+        card.mousePressEvent = lambda _ev, s=entry["safe"]: self.open_track_by_safe_name(s)
+        return card
+
+    def refresh_home_recent(self, query: str | None = None):
+        if not hasattr(self, "home_recent_grid"):
+            return
+        if query is None:
+            query = self.home_search_input.text() if hasattr(self, "home_search_input") else ""
+        while self.home_recent_grid.count():
+            item = self.home_recent_grid.takeAt(0)
+            w = item.widget()
+            if w is not None:
+                w.setParent(None)
+                w.deleteLater()
+        entries = self._home_recent_entries(query)[:6]
+        if not entries:
+            empty = QLabel("No tracks found — hit '+ New Track' to start writing.")
+            empty.setObjectName("HomeHint")
+            self.home_recent_grid.addWidget(empty, 0, 0, 1, 2)
+            return
+        for i, entry in enumerate(entries):
+            self.home_recent_grid.addWidget(self._build_home_track_card(entry), i // 2, i % 2)
 
     def load_vault_list(self, select_filename: str | None = None):
         self.vault_list.clear()
         self.update_trash_badge()
+        # Keep the Home dashboard's filter and recent grid in step with the explorer.
+        if hasattr(self, "home_search_input") and hasattr(self, "vault_search_input"):
+            if self.home_search_input.text() != self.vault_search_input.text():
+                self.home_search_input.setText(self.vault_search_input.text())
+            elif hasattr(self, "home_recent_grid"):
+                self.refresh_home_recent()
+        elif hasattr(self, "home_recent_grid"):
+            self.refresh_home_recent()
         if not os.path.exists(self.vault_dir):
             return
         q = self.vault_search_input.text().strip().lower() if hasattr(self, "vault_search_input") else ""
@@ -9811,6 +10584,7 @@ class NocturneMainWindow(QMainWindow):
         finally:
             self._is_loading_track = False
         self.load_vault_list(select_filename=safe_name)
+        self.show_workspace_page("lyrics")
 
     def open_track_from_vault(self, item: QListWidgetItem):
         safe_name = item.data(Qt.UserRole) or item.text().splitlines()[0].strip()
@@ -10346,14 +11120,27 @@ class NocturneMainWindow(QMainWindow):
         self.lyric_editor.clear()
         self.stash_editor.clear()
         self.toggle_rhyme_solo(None)
-        self.sidebar_gauge.set_score(0, "#9483E8", animate=False)
+        self.stat_rhymes.setText("RHYMES: 0")
+        self.lbl_section_marker.setText("NO SECTION")
+        if hasattr(self, "lyric_search_input"):
+            self.lyric_search_input.blockSignals(True)
+            self.lyric_search_input.clear()
+            self.lyric_search_input.blockSignals(False)
+        self.perform_lyric_search("")
+        if hasattr(self, "find_bar_widget"):
+            self.find_bar_widget.setVisible(False)
+        t_new = get_theme_palette(getattr(self, "studio_settings", {}).get("theme", "purple"))
+        self.sidebar_gauge.set_score(0, t_new.get("accent", "#9483E8"), animate=False)
         self.rate_tier_lbl.setText("READY TO SCAN")
-        self.rate_tier_lbl.setStyleSheet("color: #C6BEF0; font-size: 11px; font-weight: 800; border: none;")
-        self.mini_multie_lbl.setText("🔥 Rhyme: —  •  🌊 Flow: —")
-        self.mini_struct_lbl.setText("🏗 Structure: —  •  🧠 Vocab: —")
-        self.mini_near_lbl.setText("✨ Near: —")
+        self.rate_tier_lbl.setStyleSheet(
+            f"color: {t_new.get('accent_hover', '#C6BEF0')}; font-size: 11px; font-weight: 800; border: none;"
+        )
+        self.mini_multie_lbl.setText("Rhyme: —  •  Flow: —")
+        self.mini_struct_lbl.setText("Structure: —  •  Vocab: —")
+        self.mini_near_lbl.setText("Near: —")
         self.last_rating_result = None
         self.save_track()
+        self.show_workspace_page("lyrics")
         self.lyric_editor.setFocus()
 
     def load_starter_demo(self):
